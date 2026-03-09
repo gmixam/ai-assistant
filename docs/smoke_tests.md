@@ -36,6 +36,17 @@ For worker lifecycle smoke:
 - `PASS: worker result_text is present`
 - `SMOKE WORKER TEST PASSED`
 
+Provider-stub smoke (expected controlled failure):
+```bash
+TASK_EXECUTOR=openai EXPECTED_FINAL_STATUS=failed make smoke-worker
+TASK_EXECUTOR=deepseek EXPECTED_FINAL_STATUS=failed make smoke-worker
+TASK_EXECUTOR=kimi EXPECTED_FINAL_STATUS=failed make smoke-worker
+```
+Expected:
+- `PASS: worker lifecycle reached failed`
+- `PASS: worker error_text is present`
+- `SMOKE WORKER TEST PASSED`
+
 ## What to do on fail
 1. Check backend logs:
 ```bash

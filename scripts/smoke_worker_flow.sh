@@ -17,6 +17,8 @@ BACKEND_CONTAINER="${BACKEND_CONTAINER:-ai_backend}"
 WORKER_WAIT_TIMEOUT_SECONDS="${WORKER_WAIT_TIMEOUT_SECONDS:-40}"
 WORKER_POLL_INTERVAL_SECONDS="${WORKER_POLL_INTERVAL_SECONDS:-1}"
 WORKER_STARTUP_SLEEP_SECONDS="${WORKER_STARTUP_SLEEP_SECONDS:-1}"
+EXPECTED_FINAL_STATUS="${EXPECTED_FINAL_STATUS:-done}"
+TASK_EXECUTOR="${TASK_EXECUTOR:-}"
 
 fail() {
   echo "FAIL: $1" >&2
@@ -81,7 +83,11 @@ task_id="$(
 echo "PASS: worker smoke task created"
 
 before_worker_pids="$(list_worker_runtime_pids)"
-docker exec "$BACKEND_CONTAINER" python -m app.worker_runtime >"$worker_log_file" 2>&1 &
+if [[ -n "$TASK_EXECUTOR" ]]; then
+  docker exec -e TASK_EXECUTOR="$TASK_EXECUTOR" "$BACKEND_CONTAINER" python -m app.worker_runtime >"$worker_log_file" 2>&1 &
+else
+  docker exec "$BACKEND_CONTAINER" python -m app.worker_runtime >"$worker_log_file" 2>&1 &
+fi
 worker_pid="$!"
 sleep "$WORKER_STARTUP_SLEEP_SECONDS"
 worker_runtime_pid="$(
@@ -106,6 +112,7 @@ PY
 deadline=$((SECONDS + WORKER_WAIT_TIMEOUT_SECONDS))
 last_status=""
 last_result_text=""
+last_error_text=""
 
 while (( SECONDS < deadline )); do
   response="$(curl -fsS "$API_BASE_URL/tasks/$task_id")" || fail "GET /tasks/{task_id} failed"
@@ -117,16 +124,29 @@ while (( SECONDS < deadline )); do
     printf '%s' "$response" \
       | python3 -c 'import json,sys; d=json.load(sys.stdin); print(d.get("result_text") or "")'
   )"
+  last_error_text="$(
+    printf '%s' "$response" \
+      | python3 -c 'import json,sys; d=json.load(sys.stdin); print(d.get("error_text") or "")'
+  )"
 
-  if [[ "$last_status" == "done" ]]; then
-    [[ -n "$last_result_text" ]] || fail "task reached done but result_text is empty"
-    echo "PASS: worker lifecycle reached done"
-    echo "PASS: worker result_text is present"
+  if [[ "$last_status" == "$EXPECTED_FINAL_STATUS" ]]; then
+    if [[ "$EXPECTED_FINAL_STATUS" == "done" ]]; then
+      [[ -n "$last_result_text" ]] || fail "task reached done but result_text is empty"
+      echo "PASS: worker lifecycle reached done"
+      echo "PASS: worker result_text is present"
+    elif [[ "$EXPECTED_FINAL_STATUS" == "failed" ]]; then
+      [[ -n "$last_error_text" ]] || fail "task reached failed but error_text is empty"
+      echo "PASS: worker lifecycle reached failed"
+      echo "PASS: worker error_text is present"
+    fi
     echo "SMOKE WORKER TEST PASSED"
     exit 0
   fi
 
   if [[ "$last_status" == "failed" ]]; then
+    if [[ "$EXPECTED_FINAL_STATUS" == "failed" ]]; then
+      continue
+    fi
     echo "Worker logs:"
     cat "$worker_log_file" || true
     fail "worker lifecycle reached failed"
@@ -137,4 +157,4 @@ done
 
 echo "Worker logs:"
 cat "$worker_log_file" || true
-fail "worker did not reach done within ${WORKER_WAIT_TIMEOUT_SECONDS}s (last status: ${last_status:-unknown})"
+fail "worker did not reach ${EXPECTED_FINAL_STATUS} within ${WORKER_WAIT_TIMEOUT_SECONDS}s (last status: ${last_status:-unknown})"

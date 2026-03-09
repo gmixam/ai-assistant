@@ -3,6 +3,7 @@ import logging
 import os
 
 from .database import Base, SessionLocal, engine
+from .executors.base import TaskExecutor
 from .executors.factory import build_executor
 from .models import Task
 from .queue import dequeue_task, enqueue_task
@@ -18,7 +19,7 @@ def configure_logging() -> None:
     )
 
 
-def process_task(task_id: str) -> None:
+def process_task(task_id: str, executor: TaskExecutor) -> None:
     db = SessionLocal()
     try:
         task = db.get(Task, task_id)
@@ -43,7 +44,6 @@ def process_task(task_id: str) -> None:
         db.commit()
         db.refresh(task)
 
-        executor = build_executor()
         execution = executor.execute(task)
 
         if execution.success:
@@ -82,6 +82,7 @@ def process_task(task_id: str) -> None:
 def run_worker(max_tasks: int = 0, poll_timeout_seconds: int = 5) -> None:
     Base.metadata.create_all(bind=engine)
     ensure_task_optional_columns(engine)
+    executor = build_executor()
     processed_count = 0
     logger.info("worker started")
     while True:
@@ -90,7 +91,7 @@ def run_worker(max_tasks: int = 0, poll_timeout_seconds: int = 5) -> None:
             continue
 
         logger.info("task picked", extra={"task_id": task_id})
-        process_task(task_id)
+        process_task(task_id, executor)
         processed_count += 1
 
         if max_tasks > 0 and processed_count >= max_tasks:
