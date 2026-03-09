@@ -58,6 +58,38 @@ Telegram metadata persistence smoke:
 make smoke-telegram-metadata
 ```
 
+Task attachment metadata persistence smoke:
+```bash
+make smoke-task-attachment
+```
+
+Local attachment text extraction smoke:
+```bash
+make smoke-attachment-extract-local
+# optional PDF extraction check:
+PDF_SAMPLE_PATH=/absolute/path/to/sample.pdf make smoke-attachment-extract-local
+```
+
+Manual Telegram intake scenarios:
+1. Text only:
+```text
+Send plain text message -> expect task created.
+```
+2. File with caption:
+```text
+Send Telegram document with caption -> expect task created immediately.
+```
+3. File without caption + follow-up text:
+```text
+Send Telegram document without caption -> bot asks for instruction.
+Send next text message -> expect task created with same attachment.
+```
+
+Manual file-reading scenarios (worker):
+1. `text/plain` document + caption -> expect `download_status=downloaded` and final task result.
+2. `application/pdf` document + caption -> expect extracted text used in execution.
+3. `.docx` document + caption -> expect extracted text used in execution.
+
 ## What to do on fail
 1. Check backend logs:
 ```bash

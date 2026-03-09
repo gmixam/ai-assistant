@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 
-from sqlalchemy import BigInteger, DateTime, String
+from sqlalchemy import BigInteger, DateTime, ForeignKey, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from .database import Base
@@ -26,4 +26,23 @@ class Task(Base):
         nullable=False,
         default=lambda: datetime.now(timezone.utc),
         onupdate=lambda: datetime.now(timezone.utc),
+    )
+
+
+class TaskAttachment(Base):
+    __tablename__ = "task_attachments"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    task_id: Mapped[str] = mapped_column(String(36), ForeignKey("tasks.id"), nullable=False, index=True)
+    telegram_file_id: Mapped[str] = mapped_column(String(255), nullable=False)
+    filename: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    mime_type: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    file_size: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    telegram_chat_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    telegram_user_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    local_path: Mapped[str | None] = mapped_column(String, nullable=True)
+    download_status: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    download_error: Mapped[str | None] = mapped_column(String, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc)
     )

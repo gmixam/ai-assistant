@@ -12,10 +12,21 @@ Complete MVP end-to-end user flow:
   - `telegram_message_id`
   - `reply_to_message_id`
 - Bot now sends Telegram metadata in `POST /tasks`.
+- Bot intake supports file-first flow for Telegram `document` attachments.
 - Backend persists metadata and returns it in task responses.
+- Backend accepts optional task attachment metadata and stores it in `task_attachments`.
 - Worker performs outbound Telegram delivery after processing:
   - on `done`: sends `result_text`
   - on `failed`: sends `error_text`
+
+Attachment metadata stored (MVP):
+- `telegram_file_id`
+- `filename`
+- `mime_type`
+- `file_size`
+- `telegram_chat_id`
+- `telegram_user_id`
+- `task_id` (relation to task)
 
 ## Delivery strategy
 Chosen MVP-safe approach:
@@ -51,8 +62,13 @@ make smoke-telegram-metadata
 ## Manual Telegram E2E test
 1. Ensure `bot`, `backend`, `postgres`, `redis` are running.
 2. Start worker in environment where `TELEGRAM_BOT_TOKEN` is available.
-3. In Telegram, send:
-   - `/task your prompt here`
-4. Expect:
+3. In Telegram, validate scenarios:
+   - text only: send plain text (without `/task`)
+   - file with caption: send `document` with caption instruction
+   - file without caption: send `document` without caption, then send text instruction
+   - legacy: send `/task your prompt here`
+4. Expect for all scenarios:
    - immediate bot ack with task id
-   - follow-up message from worker delivery with final result (or error).
+   - follow-up message from worker delivery with final result (or error)
+5. For file scenarios, verify with API:
+   - `GET /tasks/{task_id}` includes `attachments` with file metadata.

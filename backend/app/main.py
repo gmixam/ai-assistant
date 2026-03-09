@@ -5,7 +5,7 @@ from fastapi import Depends, FastAPI, HTTPException
 from sqlalchemy.orm import Session
 
 from .database import Base, SessionLocal, engine
-from .models import Task
+from .models import Task, TaskAttachment
 from .queue import enqueue_task
 from .schema import ensure_task_optional_columns
 from .tasks import TaskCreateRequest, TaskCreateResponse, TaskResponse
@@ -50,6 +50,19 @@ def create_task(task: TaskCreateRequest, db: Session = Depends(get_db)):
     db.add(db_task)
     db.commit()
     db.refresh(db_task)
+    if task.attachment is not None:
+        db_attachment = TaskAttachment(
+            task_id=db_task.id,
+            telegram_file_id=task.attachment.telegram_file_id,
+            filename=task.attachment.filename,
+            mime_type=task.attachment.mime_type,
+            file_size=task.attachment.file_size,
+            telegram_chat_id=task.attachment.telegram_chat_id,
+            telegram_user_id=task.attachment.telegram_user_id,
+            download_status="pending",
+        )
+        db.add(db_attachment)
+        db.commit()
 
     try:
         enqueue_task(db_task.id)
@@ -64,6 +77,7 @@ def create_task(task: TaskCreateRequest, db: Session = Depends(get_db)):
     db_task.status = "queued"
     db.commit()
     db.refresh(db_task)
+    attachments = db.query(TaskAttachment).filter(TaskAttachment.task_id == db_task.id).order_by(TaskAttachment.id).all()
 
     return {
         "id": db_task.id,
@@ -75,6 +89,23 @@ def create_task(task: TaskCreateRequest, db: Session = Depends(get_db)):
         "telegram_user_id": db_task.telegram_user_id,
         "telegram_message_id": db_task.telegram_message_id,
         "reply_to_message_id": db_task.reply_to_message_id,
+        "attachments": [
+            {
+                "id": attachment.id,
+                "task_id": attachment.task_id,
+                "telegram_file_id": attachment.telegram_file_id,
+                "filename": attachment.filename,
+                "mime_type": attachment.mime_type,
+                "file_size": attachment.file_size,
+                "telegram_chat_id": attachment.telegram_chat_id,
+                "telegram_user_id": attachment.telegram_user_id,
+                "local_path": attachment.local_path,
+                "download_status": attachment.download_status,
+                "download_error": attachment.download_error,
+                "created_at": attachment.created_at,
+            }
+            for attachment in attachments
+        ],
         "created_at": db_task.created_at,
         "updated_at": db_task.updated_at,
     }
@@ -85,6 +116,7 @@ def get_task(task_id: str, db: Session = Depends(get_db)):
     task = db.get(Task, task_id)
     if task is None:
         raise HTTPException(status_code=404, detail="Task not found")
+    attachments = db.query(TaskAttachment).filter(TaskAttachment.task_id == task.id).order_by(TaskAttachment.id).all()
     return {
         "id": task.id,
         "input_text": task.input_text,
@@ -95,6 +127,23 @@ def get_task(task_id: str, db: Session = Depends(get_db)):
         "telegram_user_id": task.telegram_user_id,
         "telegram_message_id": task.telegram_message_id,
         "reply_to_message_id": task.reply_to_message_id,
+        "attachments": [
+            {
+                "id": attachment.id,
+                "task_id": attachment.task_id,
+                "telegram_file_id": attachment.telegram_file_id,
+                "filename": attachment.filename,
+                "mime_type": attachment.mime_type,
+                "file_size": attachment.file_size,
+                "telegram_chat_id": attachment.telegram_chat_id,
+                "telegram_user_id": attachment.telegram_user_id,
+                "local_path": attachment.local_path,
+                "download_status": attachment.download_status,
+                "download_error": attachment.download_error,
+                "created_at": attachment.created_at,
+            }
+            for attachment in attachments
+        ],
         "created_at": task.created_at,
         "updated_at": task.updated_at,
     }

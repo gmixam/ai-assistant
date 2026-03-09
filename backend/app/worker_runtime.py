@@ -1,7 +1,9 @@
 import argparse
 import logging
 import os
+from types import SimpleNamespace
 
+from .attachment_pipeline import AttachmentProcessingError, prepare_task_execution_input
 from .database import Base, SessionLocal, engine
 from .executors.base import TaskExecutor
 from .executors.factory import build_executor
@@ -45,7 +47,24 @@ def process_task(task_id: str, executor: TaskExecutor) -> None:
         db.commit()
         db.refresh(task)
 
-        execution = executor.execute(task)
+        try:
+            execution_input = prepare_task_execution_input(task, db)
+        except AttachmentProcessingError as exc:
+            task.status = "failed"
+            task.result_text = None
+            task.error_text = str(exc)
+            db.commit()
+            db.refresh(task)
+            logger.error("attachment preparation failed", extra={"task_id": task_id, "error": str(exc)})
+            if not deliver_task_to_telegram(task):
+                logger.info("task failed without Telegram delivery", extra={"task_id": task_id})
+            return
+
+        execution_task = SimpleNamespace(
+            id=task.id,
+            input_text=execution_input,
+        )
+        execution = executor.execute(execution_task)
 
         if execution.success:
             task.status = "done"
