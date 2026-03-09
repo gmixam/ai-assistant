@@ -12,6 +12,8 @@ class Task(Base):
     id: Mapped[str] = mapped_column(String(36), primary_key=True, index=True)
     input_text: Mapped[str] = mapped_column(String, nullable=False)
     status: Mapped[str] = mapped_column(String(32), nullable=False, default="created")
+    result_text: Mapped[str | None] = mapped_column(String, nullable=True)
+    error_text: Mapped[str | None] = mapped_column(String, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc)
     )

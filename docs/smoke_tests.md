@@ -33,6 +33,7 @@ Successful run prints:
 For worker lifecycle smoke:
 - `PASS: worker smoke task created`
 - `PASS: worker lifecycle reached done`
+- `PASS: worker result_text is present`
 - `SMOKE WORKER TEST PASSED`
 
 ## What to do on fail

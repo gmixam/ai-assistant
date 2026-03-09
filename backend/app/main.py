@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from .database import Base, SessionLocal, engine
 from .models import Task
 from .queue import enqueue_task
+from .schema import ensure_task_optional_columns
 from .tasks import TaskCreateRequest, TaskCreateResponse, TaskResponse
 
 
@@ -18,6 +19,7 @@ logger = logging.getLogger(__name__)
 def on_startup() -> None:
     # MVP-safe schema initialization without destructive operations.
     Base.metadata.create_all(bind=engine)
+    ensure_task_optional_columns(engine)
 
 
 def get_db():
@@ -59,6 +61,8 @@ def create_task(task: TaskCreateRequest, db: Session = Depends(get_db)):
         "id": db_task.id,
         "task_id": db_task.id,
         "status": db_task.status,
+        "result_text": db_task.result_text,
+        "error_text": db_task.error_text,
         "created_at": db_task.created_at,
         "updated_at": db_task.updated_at,
     }
@@ -73,6 +77,8 @@ def get_task(task_id: str, db: Session = Depends(get_db)):
         "id": task.id,
         "input_text": task.input_text,
         "status": task.status,
+        "result_text": task.result_text,
+        "error_text": task.error_text,
         "created_at": task.created_at,
         "updated_at": task.updated_at,
     }

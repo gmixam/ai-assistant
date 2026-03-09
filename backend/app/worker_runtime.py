@@ -1,15 +1,14 @@
 import argparse
 import logging
 import os
-import time
 
 from .database import Base, SessionLocal, engine
+from .executors.factory import build_executor
 from .models import Task
 from .queue import dequeue_task, enqueue_task
+from .schema import ensure_task_optional_columns
 
 logger = logging.getLogger("task_worker")
-
-MOCK_PROCESSING_DELAY_SECONDS = float(os.getenv("MOCK_PROCESSING_DELAY_SECONDS", "0.2"))
 
 
 def configure_logging() -> None:
@@ -40,24 +39,36 @@ def process_task(task_id: str) -> None:
 
         logger.info("processing started", extra={"task_id": task_id})
         task.status = "processing"
+        task.error_text = None
         db.commit()
         db.refresh(task)
 
-        # MVP-safe mock execution placeholder until AI execution pipeline is introduced.
-        if MOCK_PROCESSING_DELAY_SECONDS > 0:
-            time.sleep(MOCK_PROCESSING_DELAY_SECONDS)
+        executor = build_executor()
+        execution = executor.execute(task)
 
-        task.status = "done"
+        if execution.success:
+            task.status = "done"
+            task.result_text = execution.result_text
+            task.error_text = None
+        else:
+            task.status = "failed"
+            task.result_text = None
+            task.error_text = execution.error_text or "executor reported unsuccessful processing"
         db.commit()
         db.refresh(task)
-        logger.info("processing completed", extra={"task_id": task_id, "status": task.status})
-    except Exception:
+        if task.status == "done":
+            logger.info("processing completed", extra={"task_id": task_id, "status": task.status})
+        else:
+            logger.error("processing failed", extra={"task_id": task_id, "status": task.status})
+    except Exception as exc:
         db.rollback()
         logger.exception("processing failed", extra={"task_id": task_id})
         try:
             task = db.get(Task, task_id)
             if task is not None:
                 task.status = "failed"
+                task.result_text = None
+                task.error_text = str(exc)
                 db.commit()
                 db.refresh(task)
                 logger.info("task marked as failed", extra={"task_id": task_id})
@@ -70,6 +81,7 @@ def process_task(task_id: str) -> None:
 
 def run_worker(max_tasks: int = 0, poll_timeout_seconds: int = 5) -> None:
     Base.metadata.create_all(bind=engine)
+    ensure_task_optional_columns(engine)
     processed_count = 0
     logger.info("worker started")
     while True:

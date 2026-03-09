@@ -35,11 +35,32 @@ docker inspect "$BACKEND_CONTAINER" >/dev/null 2>&1 || fail "backend container n
 
 worker_log_file="${TMPDIR:-/tmp}/smoke-worker.$$.log"
 worker_pid=""
+worker_runtime_pid=""
+
+list_worker_runtime_pids() {
+  python3 - <<'PY'
+import os
+
+for pid in sorted(os.listdir("/proc"), key=lambda x: int(x) if x.isdigit() else 10**9):
+    if not pid.isdigit():
+        continue
+    try:
+        cmdline = open(f"/proc/{pid}/cmdline", "rb").read().decode("utf-8", "ignore").replace("\x00", " ").strip()
+    except Exception:
+        continue
+    if "python -m app.worker_runtime" in cmdline:
+        print(pid)
+PY
+}
 
 cleanup() {
   if [[ -n "$worker_pid" ]] && kill -0 "$worker_pid" >/dev/null 2>&1; then
     kill "$worker_pid" >/dev/null 2>&1 || true
     wait "$worker_pid" 2>/dev/null || true
+  fi
+  if [[ -n "$worker_runtime_pid" ]] && kill -0 "$worker_runtime_pid" >/dev/null 2>&1; then
+    kill "$worker_runtime_pid" >/dev/null 2>&1 || true
+    wait "$worker_runtime_pid" 2>/dev/null || true
   fi
 }
 trap cleanup EXIT
@@ -59,12 +80,32 @@ task_id="$(
 [[ -n "$task_id" ]] || fail "task_id is missing in POST /tasks response"
 echo "PASS: worker smoke task created"
 
+before_worker_pids="$(list_worker_runtime_pids)"
 docker exec "$BACKEND_CONTAINER" python -m app.worker_runtime >"$worker_log_file" 2>&1 &
 worker_pid="$!"
 sleep "$WORKER_STARTUP_SLEEP_SECONDS"
+worker_runtime_pid="$(
+  BEFORE_WORKER_PIDS="$before_worker_pids" python3 - <<'PY'
+import os
+
+before = {pid for pid in os.getenv("BEFORE_WORKER_PIDS", "").splitlines() if pid.strip()}
+current = []
+for pid in sorted(os.listdir("/proc"), key=lambda x: int(x) if x.isdigit() else 10**9):
+    if not pid.isdigit():
+        continue
+    try:
+        cmdline = open(f"/proc/{pid}/cmdline", "rb").read().decode("utf-8", "ignore").replace("\x00", " ").strip()
+    except Exception:
+        continue
+    if "python -m app.worker_runtime" in cmdline and pid not in before:
+        current.append(pid)
+print(current[-1] if current else "")
+PY
+)"
 
 deadline=$((SECONDS + WORKER_WAIT_TIMEOUT_SECONDS))
 last_status=""
+last_result_text=""
 
 while (( SECONDS < deadline )); do
   response="$(curl -fsS "$API_BASE_URL/tasks/$task_id")" || fail "GET /tasks/{task_id} failed"
@@ -72,9 +113,15 @@ while (( SECONDS < deadline )); do
     printf '%s' "$response" \
       | python3 -c 'import json,sys; d=json.load(sys.stdin); print(d.get("status") or "")'
   )"
+  last_result_text="$(
+    printf '%s' "$response" \
+      | python3 -c 'import json,sys; d=json.load(sys.stdin); print(d.get("result_text") or "")'
+  )"
 
   if [[ "$last_status" == "done" ]]; then
+    [[ -n "$last_result_text" ]] || fail "task reached done but result_text is empty"
     echo "PASS: worker lifecycle reached done"
+    echo "PASS: worker result_text is present"
     echo "SMOKE WORKER TEST PASSED"
     exit 0
   fi
