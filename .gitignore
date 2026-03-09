@@ -224,3 +224,13 @@ temp/
 # Local OpenClaw state
 .openclaw/
 root/openclaw/
+
+# Codex/OpenClaw/agent local state and traces
+.codex/
+.openclaw-state/
+.agent-state/
+
+# Project logs and smoke artifacts
+logs/
+smoke-*.log
+*.smoke.log

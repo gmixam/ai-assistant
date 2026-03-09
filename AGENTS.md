@@ -89,4 +89,15 @@ For backend/queue/worker changes:
 3. For worker lifecycle changes, run `make smoke-worker`.
 4. Report PASS/FAIL with a short summary and failed step (if any).
 
+## Safe Git Workflow (Mandatory)
+After completing each implementation step, OpenClaw/Codex must:
+1. Run relevant smoke checks for changed scope.
+2. Run `git status`.
+3. Verify there are no secrets or transient artifacts in tracked changes (`.env`, tokens, local storage inputs, logs, smoke temp files, local state dirs).
+4. If any new environment variable was introduced, update `.env.example` in the same step.
+5. Then execute:
+   - `git add .`
+   - `git commit -m "<clear scope message>"`
+   - `git push`
+
 This file is the default system context for OpenClaw in this repository.
