@@ -1,4 +1,4 @@
-.PHONY: smoke smoke-worker smoke-worker-openai smoke-worker-openai-no-key smoke-telegram-metadata smoke-task-attachment smoke-attachment-extract-local
+.PHONY: smoke smoke-worker smoke-worker-openai smoke-worker-openai-no-key smoke-telegram-metadata smoke-task-attachment smoke-attachment-extract-local smoke-telegram-delivery
 
 smoke:
 	./scripts/smoke_task_flow.sh
@@ -20,3 +20,6 @@ smoke-task-attachment:
 
 smoke-attachment-extract-local:
 	./scripts/smoke_attachment_extract_local.sh
+
+smoke-telegram-delivery:
+	./scripts/smoke_telegram_delivery_flow.sh

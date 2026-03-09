@@ -136,6 +136,8 @@ celerybeat.pid
 
 # Environments
 .env
+.env.*
+!.env.example
 .envrc
 .venv
 env/
@@ -205,3 +207,20 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+# AI Assistant Platform local runtime data
+storage/input/
+storage/output/
+storage/tmp/
+
+# Downloaded / uploaded task materials
+uploads/
+downloads/
+artifacts/
+reports/
+tmp/
+temp/
+
+# Local OpenClaw state
+.openclaw/
+root/openclaw/

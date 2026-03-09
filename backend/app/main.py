@@ -46,6 +46,9 @@ def create_task(task: TaskCreateRequest, db: Session = Depends(get_db)):
         telegram_user_id=task.telegram_user_id,
         telegram_message_id=task.telegram_message_id,
         reply_to_message_id=task.reply_to_message_id,
+        delivery_status="pending" if task.telegram_chat_id is not None else None,
+        delivered_at=None,
+        delivery_error=None,
     )
     db.add(db_task)
     db.commit()
@@ -89,6 +92,9 @@ def create_task(task: TaskCreateRequest, db: Session = Depends(get_db)):
         "telegram_user_id": db_task.telegram_user_id,
         "telegram_message_id": db_task.telegram_message_id,
         "reply_to_message_id": db_task.reply_to_message_id,
+        "delivery_status": db_task.delivery_status,
+        "delivered_at": db_task.delivered_at,
+        "delivery_error": db_task.delivery_error,
         "attachments": [
             {
                 "id": attachment.id,
@@ -130,6 +136,9 @@ def get_task(task_id: str, db: Session = Depends(get_db)):
         "telegram_user_id": task.telegram_user_id,
         "telegram_message_id": task.telegram_message_id,
         "reply_to_message_id": task.reply_to_message_id,
+        "delivery_status": task.delivery_status,
+        "delivered_at": task.delivered_at,
+        "delivery_error": task.delivery_error,
         "attachments": [
             {
                 "id": attachment.id,

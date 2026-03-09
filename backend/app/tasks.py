@@ -50,6 +50,9 @@ class TaskCreateResponse(BaseModel):
     telegram_user_id: Optional[int] = None
     telegram_message_id: Optional[int] = None
     reply_to_message_id: Optional[int] = None
+    delivery_status: Optional[str] = None
+    delivered_at: Optional[datetime] = None
+    delivery_error: Optional[str] = None
     attachments: list[TaskAttachmentResponse] = Field(default_factory=list)
     created_at: datetime
     updated_at: datetime
@@ -65,6 +68,9 @@ class TaskResponse(BaseModel):
     telegram_user_id: Optional[int] = None
     telegram_message_id: Optional[int] = None
     reply_to_message_id: Optional[int] = None
+    delivery_status: Optional[str] = None
+    delivered_at: Optional[datetime] = None
+    delivery_error: Optional[str] = None
     attachments: list[TaskAttachmentResponse] = Field(default_factory=list)
     created_at: datetime
     updated_at: datetime

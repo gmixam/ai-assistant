@@ -1,7 +1,10 @@
 import argparse
 import logging
 import os
+from datetime import datetime, timezone
 from types import SimpleNamespace
+
+from sqlalchemy.orm import Session
 
 from .attachment_pipeline import AttachmentProcessingError, prepare_task_execution_input
 from .database import Base, SessionLocal, engine
@@ -19,6 +22,50 @@ def configure_logging() -> None:
     logging.basicConfig(
         level=os.getenv("WORKER_LOG_LEVEL", "INFO"),
         format="%(asctime)s %(levelname)s %(name)s %(message)s",
+    )
+
+
+def _deliver_task_result(task: Task, db: Session) -> None:
+    if task.telegram_chat_id is None:
+        logger.info("telegram delivery skipped: no telegram_chat_id", extra={"task_id": task.id})
+        return
+    if task.delivery_status == "delivered":
+        logger.info("telegram delivery skipped: already delivered", extra={"task_id": task.id})
+        return
+    if task.delivery_status is None:
+        task.delivery_status = "pending"
+        db.commit()
+        db.refresh(task)
+
+    try:
+        outcome = deliver_task_to_telegram(task)
+    except Exception as exc:
+        task.delivery_status = "failed"
+        task.delivery_error = f"telegram delivery exception: {exc}"[:1000]
+        db.commit()
+        db.refresh(task)
+        logger.exception("telegram delivery raised exception", extra={"task_id": task.id})
+        return
+
+    if outcome.success:
+        task.delivery_status = "delivered"
+        task.delivered_at = datetime.now(timezone.utc)
+        task.delivery_error = None
+        db.commit()
+        db.refresh(task)
+        logger.info(
+            "telegram delivery succeeded",
+            extra={"task_id": task.id, "delivery_status": task.delivery_status, "chat_id": task.telegram_chat_id},
+        )
+        return
+
+    task.delivery_status = "failed"
+    task.delivery_error = (outcome.error_text or "telegram delivery failed")[:1000]
+    db.commit()
+    db.refresh(task)
+    logger.error(
+        "telegram delivery failed",
+        extra={"task_id": task.id, "delivery_status": task.delivery_status, "delivery_error": task.delivery_error},
     )
 
 
@@ -56,8 +103,7 @@ def process_task(task_id: str, executor: TaskExecutor) -> None:
             db.commit()
             db.refresh(task)
             logger.error("attachment preparation failed", extra={"task_id": task_id, "error": str(exc)})
-            if not deliver_task_to_telegram(task):
-                logger.info("task failed without Telegram delivery", extra={"task_id": task_id})
+            _deliver_task_result(task, db)
             return
 
         execution_task = SimpleNamespace(
@@ -78,12 +124,10 @@ def process_task(task_id: str, executor: TaskExecutor) -> None:
         db.refresh(task)
         if task.status == "done":
             logger.info("processing completed", extra={"task_id": task_id, "status": task.status})
-            if not deliver_task_to_telegram(task):
-                logger.info("task done without Telegram delivery", extra={"task_id": task_id})
+            _deliver_task_result(task, db)
         else:
             logger.error("processing failed", extra={"task_id": task_id, "status": task.status})
-            if not deliver_task_to_telegram(task):
-                logger.info("task failed without Telegram delivery", extra={"task_id": task_id})
+            _deliver_task_result(task, db)
     except Exception as exc:
         db.rollback()
         logger.exception("processing failed", extra={"task_id": task_id})

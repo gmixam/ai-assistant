@@ -18,6 +18,10 @@ Complete MVP end-to-end user flow:
 - Worker performs outbound Telegram delivery after processing:
   - on `done`: sends `result_text`
   - on `failed`: sends `error_text`
+- Task now stores Telegram delivery diagnostics:
+  - `delivery_status` (`pending`, `delivered`, `failed`)
+  - `delivered_at`
+  - `delivery_error`
 
 Attachment metadata stored (MVP):
 - `telegram_file_id`
@@ -39,7 +43,8 @@ Why:
 
 ## Controlled behavior
 - If task has no `telegram_chat_id`: worker logs skip, does not crash.
-- If `TELEGRAM_BOT_TOKEN` is missing: worker logs skip, does not crash.
+- If `delivery_status=delivered`: worker skips re-delivery.
+- If Telegram delivery fails: worker records `delivery_status=failed` + `delivery_error` and keeps loop alive.
 - Telegram delivery failures are logged and do not break worker loop.
 
 ## Env used for Telegram delivery
@@ -57,6 +62,7 @@ make smoke-worker
 Metadata persistence:
 ```bash
 make smoke-telegram-metadata
+make smoke-telegram-delivery
 ```
 
 ## Manual Telegram E2E test
@@ -72,3 +78,6 @@ make smoke-telegram-metadata
    - follow-up message from worker delivery with final result (or error)
 5. For file scenarios, verify with API:
    - `GET /tasks/{task_id}` includes `attachments` with file metadata.
+6. For delivery diagnostics, verify with API:
+   - `delivery_status=delivered` on successful Telegram send
+   - `delivery_status=failed` with `delivery_error` on delivery errors.

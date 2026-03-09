@@ -58,6 +58,15 @@ Telegram metadata persistence smoke:
 make smoke-telegram-metadata
 ```
 
+Telegram delivery reliability smoke:
+```bash
+make smoke-telegram-delivery
+```
+Validates:
+- task execution reaches `done`
+- Telegram delivery state reaches `failed` when Telegram API is unavailable
+- `delivery_error` is persisted
+
 Task attachment metadata persistence smoke:
 ```bash
 make smoke-task-attachment
@@ -91,6 +100,10 @@ Manual file-reading scenarios (worker):
 2. `application/pdf` document + caption -> expect extracted text used in execution.
 3. `.docx` document + caption -> expect extracted text used in execution.
 4. Large document -> expect successful processing with `was_truncated=true` and `sent_text_length < extracted_text_length`.
+
+Manual delivery diagnostics scenarios:
+1. Successful delivery path -> expect `delivery_status=delivered`, non-null `delivered_at`.
+2. Delivery failure path (e.g. invalid chat or Telegram API issue) -> expect `delivery_status=failed` and non-empty `delivery_error`.
 
 ## What to do on fail
 1. Check backend logs:

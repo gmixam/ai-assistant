@@ -18,6 +18,9 @@ class Task(Base):
     telegram_user_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     telegram_message_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     reply_to_message_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    delivery_status: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    delivered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    delivery_error: Mapped[str | None] = mapped_column(String, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc)
     )

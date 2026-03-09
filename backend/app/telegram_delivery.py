@@ -1,13 +1,11 @@
 import json
-import logging
 import os
 import urllib.error
 import urllib.parse
 import urllib.request
+from dataclasses import dataclass
 
 from .models import Task
-
-logger = logging.getLogger("telegram_delivery")
 
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
 TELEGRAM_API_BASE_URL = os.getenv("TELEGRAM_API_BASE_URL", "https://api.telegram.org").rstrip("/")
@@ -26,13 +24,17 @@ def _build_task_message(task: Task) -> str:
     return text
 
 
-def deliver_task_to_telegram(task: Task) -> bool:
+@dataclass(frozen=True)
+class DeliveryOutcome:
+    success: bool
+    error_text: str | None = None
+
+
+def deliver_task_to_telegram(task: Task) -> DeliveryOutcome:
     if task.telegram_chat_id is None:
-        logger.info("telegram delivery skipped: no telegram_chat_id", extra={"task_id": task.id})
-        return False
+        return DeliveryOutcome(success=False, error_text="telegram_chat_id is missing")
     if not TELEGRAM_BOT_TOKEN:
-        logger.info("telegram delivery skipped: TELEGRAM_BOT_TOKEN missing", extra={"task_id": task.id})
-        return False
+        return DeliveryOutcome(success=False, error_text="TELEGRAM_BOT_TOKEN is missing")
 
     payload = {
         "chat_id": str(task.telegram_chat_id),
@@ -50,18 +52,17 @@ def deliver_task_to_telegram(task: Task) -> bool:
             raw = response.read().decode("utf-8")
             parsed = json.loads(raw)
     except urllib.error.HTTPError as exc:
-        logger.error("Telegram delivery failed (HTTP)", extra={"task_id": task.id, "code": exc.code})
-        return False
-    except urllib.error.URLError:
-        logger.error("Telegram delivery failed (network)", extra={"task_id": task.id})
-        return False
-    except Exception:
-        logger.exception("Telegram delivery failed (unexpected)", extra={"task_id": task.id})
-        return False
+        return DeliveryOutcome(success=False, error_text=f"telegram HTTP error {exc.code}")
+    except urllib.error.URLError as exc:
+        reason = getattr(exc, "reason", "network error")
+        return DeliveryOutcome(success=False, error_text=f"telegram network error: {reason}")
+    except Exception as exc:
+        return DeliveryOutcome(success=False, error_text=f"telegram unexpected error: {exc}")
 
     if parsed.get("ok") is True:
-        logger.info("task delivered to Telegram", extra={"task_id": task.id, "chat_id": task.telegram_chat_id})
-        return True
+        return DeliveryOutcome(success=True, error_text=None)
 
-    logger.error("Telegram delivery failed (API response)", extra={"task_id": task.id})
-    return False
+    description = parsed.get("description") if isinstance(parsed, dict) else None
+    if isinstance(description, str) and description.strip():
+        return DeliveryOutcome(success=False, error_text=f"telegram API error: {description.strip()}")
+    return DeliveryOutcome(success=False, error_text="telegram API returned ok=false")
