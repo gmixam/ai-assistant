@@ -22,6 +22,8 @@ TELEGRAM_API_BASE_URL = os.getenv("TELEGRAM_API_BASE_URL", "https://api.telegram
 TELEGRAM_FILE_DOWNLOAD_TIMEOUT_SECONDS = int(os.getenv("TELEGRAM_FILE_DOWNLOAD_TIMEOUT_SECONDS", "30"))
 STORAGE_INPUT_DIR = os.getenv("STORAGE_INPUT_DIR", "storage/input")
 ATTACHMENT_TEXT_MAX_CHARS = int(os.getenv("ATTACHMENT_TEXT_MAX_CHARS", "50000"))
+EXECUTION_INPUT_MAX_CHARS = int(os.getenv("EXECUTION_INPUT_MAX_CHARS", "120000"))
+INSTRUCTION_TEXT_MAX_CHARS = int(os.getenv("INSTRUCTION_TEXT_MAX_CHARS", "8000"))
 
 SUPPORTED_MIME_TYPES = {
     "text/plain",
@@ -43,15 +45,64 @@ class ExtractedAttachment:
     extracted_text: str
 
 
-def build_execution_input(instruction_text: str, extracted_attachments: list[ExtractedAttachment]) -> str:
-    instruction = (instruction_text or "").strip()
+@dataclass(frozen=True)
+class PreparedExecutionInput:
+    text: str
+    total_extracted_text_length: int
+    total_sent_text_length: int
+    was_truncated: bool
+    sent_text_length_by_attachment_id: dict[int, int]
+
+
+def compose_controlled_execution_input(
+    instruction_text: str,
+    extracted_attachments: list[ExtractedAttachment],
+    max_input_chars: int = EXECUTION_INPUT_MAX_CHARS,
+    per_attachment_max_chars: int = ATTACHMENT_TEXT_MAX_CHARS,
+    instruction_max_chars: int = INSTRUCTION_TEXT_MAX_CHARS,
+) -> PreparedExecutionInput:
+    instruction = (instruction_text or "").strip()[:instruction_max_chars]
+    total_extracted = sum(len(item.extracted_text) for item in extracted_attachments)
+    sent_by_attachment_id: dict[int, int] = {}
+    was_truncated = False
+
     parts: list[str] = [f"Instruction:\n{instruction}"]
-    for index, item in enumerate(extracted_attachments, start=1):
-        snippet = item.extracted_text[:ATTACHMENT_TEXT_MAX_CHARS]
-        parts.append(
-            f"Attachment {index} ({item.filename}, {item.mime_type}):\n{snippet}"
+    current_length = len(parts[0])
+    if current_length > max_input_chars:
+        return PreparedExecutionInput(
+            text=parts[0][:max_input_chars],
+            total_extracted_text_length=total_extracted,
+            total_sent_text_length=0,
+            was_truncated=True,
+            sent_text_length_by_attachment_id={item.attachment_id: 0 for item in extracted_attachments},
         )
-    return "\n\n".join(parts).strip()
+    if len((instruction_text or "").strip()) > len(instruction):
+        was_truncated = True
+
+    for index, item in enumerate(extracted_attachments, start=1):
+        header = f"\n\nAttachment {index} ({item.filename}, {item.mime_type}):\n"
+        remaining_after_header = max_input_chars - (current_length + len(header))
+        if remaining_after_header <= 0:
+            sent_by_attachment_id[item.attachment_id] = 0
+            was_truncated = was_truncated or bool(item.extracted_text)
+            continue
+
+        candidate = item.extracted_text[:per_attachment_max_chars]
+        snippet = candidate[:remaining_after_header]
+        parts.append(header + snippet)
+        current_length += len(header) + len(snippet)
+        sent_by_attachment_id[item.attachment_id] = len(snippet)
+        if len(snippet) < len(item.extracted_text):
+            was_truncated = True
+
+    total_sent = sum(sent_by_attachment_id.values())
+    return PreparedExecutionInput(
+        text="".join(parts),
+        total_extracted_text_length=total_extracted,
+        total_sent_text_length=total_sent,
+        was_truncated=was_truncated,
+        sent_text_length_by_attachment_id=sent_by_attachment_id,
+    )
 
 
 def prepare_task_execution_input(task: Task, db: Session) -> str:
@@ -65,10 +116,33 @@ def prepare_task_execution_input(task: Task, db: Session) -> str:
         return task.input_text
 
     extracted: list[ExtractedAttachment] = []
+    attachment_by_id: dict[int, TaskAttachment] = {}
     for attachment in attachments:
-        extracted.append(_download_and_extract_attachment(task, attachment, db))
+        extracted_item = _download_and_extract_attachment(task, attachment, db)
+        extracted.append(extracted_item)
+        attachment_by_id[extracted_item.attachment_id] = attachment
 
-    return build_execution_input(task.input_text, extracted)
+    prepared = compose_controlled_execution_input(task.input_text, extracted)
+    for item in extracted:
+        attachment = attachment_by_id[item.attachment_id]
+        sent_len = prepared.sent_text_length_by_attachment_id.get(item.attachment_id, 0)
+        attachment.extracted_text_length = len(item.extracted_text)
+        attachment.sent_text_length = sent_len
+        attachment.was_truncated = sent_len < len(item.extracted_text)
+    db.commit()
+
+    logger.info(
+        "attachment execution input prepared",
+        extra={
+            "task_id": task.id,
+            "attachment_count": len(extracted),
+            "total_extracted_text_length": prepared.total_extracted_text_length,
+            "total_sent_text_length": prepared.total_sent_text_length,
+            "was_truncated": prepared.was_truncated,
+            "max_input_chars": EXECUTION_INPUT_MAX_CHARS,
+        },
+    )
+    return prepared.text
 
 
 def _download_and_extract_attachment(task: Task, attachment: TaskAttachment, db: Session) -> ExtractedAttachment:

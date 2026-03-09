@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 
-from sqlalchemy import BigInteger, DateTime, ForeignKey, Integer, String
+from sqlalchemy import BigInteger, Boolean, DateTime, ForeignKey, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from .database import Base
@@ -43,6 +43,9 @@ class TaskAttachment(Base):
     local_path: Mapped[str | None] = mapped_column(String, nullable=True)
     download_status: Mapped[str | None] = mapped_column(String(32), nullable=True)
     download_error: Mapped[str | None] = mapped_column(String, nullable=True)
+    extracted_text_length: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    sent_text_length: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    was_truncated: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc)
     )

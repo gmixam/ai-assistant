@@ -22,6 +22,21 @@ Path is configurable via `STORAGE_INPUT_DIR` (default: `storage/input`).
 - `local_path`
 - `download_status` (`pending`, `downloading`, `downloaded`, `failed`)
 - `download_error`
+- `extracted_text_length`
+- `sent_text_length`
+- `was_truncated`
+
+## Input size control layer (MVP)
+Execution input is now size-guarded before executor call:
+- `EXECUTION_INPUT_MAX_CHARS` (default: `120000`) - total budget for composed execution input.
+- `ATTACHMENT_TEXT_MAX_CHARS` (default: `50000`) - per-attachment cap before global budget.
+- `INSTRUCTION_TEXT_MAX_CHARS` (default: `8000`) - cap for task instruction text.
+
+When extracted text exceeds limits:
+- worker sends only a controlled truncated subset to executor
+- task does not fail only because of large size
+- diagnostics are stored in attachment rows (`extracted_text_length`, `sent_text_length`, `was_truncated`)
+- worker logs total extracted/sent lengths and truncation flag.
 
 ## Worker behavior
 1. Worker loads task attachments.

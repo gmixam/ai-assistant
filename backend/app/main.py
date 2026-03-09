@@ -102,6 +102,9 @@ def create_task(task: TaskCreateRequest, db: Session = Depends(get_db)):
                 "local_path": attachment.local_path,
                 "download_status": attachment.download_status,
                 "download_error": attachment.download_error,
+                "extracted_text_length": attachment.extracted_text_length,
+                "sent_text_length": attachment.sent_text_length,
+                "was_truncated": attachment.was_truncated,
                 "created_at": attachment.created_at,
             }
             for attachment in attachments
@@ -140,6 +143,9 @@ def get_task(task_id: str, db: Session = Depends(get_db)):
                 "local_path": attachment.local_path,
                 "download_status": attachment.download_status,
                 "download_error": attachment.download_error,
+                "extracted_text_length": attachment.extracted_text_length,
+                "sent_text_length": attachment.sent_text_length,
+                "was_truncated": attachment.was_truncated,
                 "created_at": attachment.created_at,
             }
             for attachment in attachments

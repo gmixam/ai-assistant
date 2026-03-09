@@ -69,6 +69,7 @@ make smoke-attachment-extract-local
 # optional PDF extraction check:
 PDF_SAMPLE_PATH=/absolute/path/to/sample.pdf make smoke-attachment-extract-local
 ```
+This smoke also validates truncation guardrail on oversized extracted content.
 
 Manual Telegram intake scenarios:
 1. Text only:
@@ -89,6 +90,7 @@ Manual file-reading scenarios (worker):
 1. `text/plain` document + caption -> expect `download_status=downloaded` and final task result.
 2. `application/pdf` document + caption -> expect extracted text used in execution.
 3. `.docx` document + caption -> expect extracted text used in execution.
+4. Large document -> expect successful processing with `was_truncated=true` and `sent_text_length < extracted_text_length`.
 
 ## What to do on fail
 1. Check backend logs:

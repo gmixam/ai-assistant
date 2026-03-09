@@ -19,7 +19,7 @@ import pathlib
 
 from docx import Document
 
-from app.attachment_pipeline import _extract_text
+from app.attachment_pipeline import ExtractedAttachment, _extract_text, compose_controlled_execution_input
 
 
 def fail(message: str) -> None:
@@ -43,6 +43,31 @@ docx_extracted = _extract_text(
 if "Hello from docx attachment" not in docx_extracted:
     fail("docx extraction failed")
 print("PASS: docx extraction")
+
+prepared = compose_controlled_execution_input(
+    instruction_text="Analyze this attachment",
+    extracted_attachments=[
+        ExtractedAttachment(
+            attachment_id=1,
+            filename="big.txt",
+            mime_type="text/plain",
+            local_path="/tmp/big.txt",
+            extracted_text="X" * 500,
+        )
+    ],
+    max_input_chars=180,
+    per_attachment_max_chars=400,
+    instruction_max_chars=100,
+)
+if len(prepared.text) > 180:
+    fail("controlled input exceeded max_input_chars")
+if prepared.total_extracted_text_length != 500:
+    fail("unexpected total_extracted_text_length")
+if prepared.total_sent_text_length >= 500:
+    fail("expected sent_text_length to be truncated")
+if prepared.was_truncated is not True:
+    fail("expected was_truncated to be true")
+print("PASS: controlled truncation guardrail")
 
 pdf_sample_path = os.getenv("PDF_SAMPLE_PATH", "").strip()
 if pdf_sample_path:

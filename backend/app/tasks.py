@@ -25,6 +25,9 @@ class TaskAttachmentResponse(BaseModel):
     local_path: Optional[str] = None
     download_status: Optional[str] = None
     download_error: Optional[str] = None
+    extracted_text_length: Optional[int] = None
+    sent_text_length: Optional[int] = None
+    was_truncated: Optional[bool] = None
     created_at: datetime
 
 
