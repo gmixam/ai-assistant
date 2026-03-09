@@ -1,0 +1,293 @@
+# AI Assistant Platform
+
+## Project Documentation v0.4
+
+Last updated: 2026-03-07
+
+------------------------------------------------------------------------
+
+# 1. Project Vision
+
+The AI Assistant Platform is designed as a personal AI orchestration
+system that allows a user to interact with multiple AI agents through a
+simple interface.
+
+Primary interface: Telegram
+
+The system will eventually support:
+
+-   task orchestration
+-   multi-agent workflows
+-   integration with multiple LLM providers
+-   automated analysis and knowledge work
+-   scalable SaaS architecture
+
+The initial version focuses on personal productivity and experimentation
+with AI agents.
+
+------------------------------------------------------------------------
+
+# 2. Current System Status
+
+The infrastructure of the system has already been deployed and is
+operational.
+
+Deployment environment:
+
+VPS Provider: Hetzner Server OS: Ubuntu 24.04 LTS Containerization:
+Docker Orchestration: Docker Compose
+
+Running containers:
+
+-   ai_bot (Telegram bot)
+-   ai_backend (FastAPI API server)
+-   ai_redis (task queue)
+-   ai_postgres (database)
+
+The system can already:
+
+-   run a Telegram bot
+-   run backend API
+-   communicate between services through Docker network
+
+Development environment:
+
+VS Code + Remote SSH connected to the VPS.
+
+------------------------------------------------------------------------
+
+# 3. Deployment Architecture
+
+System architecture:
+
+Telegram ↓ Telegram Bot (aiogram) ↓ Backend API (FastAPI) ↓ Redis Queue
+↓ Workers (future) ↓ PostgreSQL
+
+All services run as Docker containers on the VPS.
+
+Docker containers:
+
+ai_bot ai_backend ai_redis ai_postgres
+
+Managed through:
+
+docker compose
+
+------------------------------------------------------------------------
+
+# 4. Technology Stack
+
+Infrastructure:
+
+-   Hetzner Cloud VPS
+-   Ubuntu 24.04 LTS
+-   Docker
+-   Docker Compose
+
+Backend:
+
+-   Python
+-   FastAPI
+-   Uvicorn
+
+Bot:
+
+-   Python
+-   aiogram
+
+Data:
+
+-   PostgreSQL
+-   Redis
+
+Future AI providers:
+
+-   OpenAI
+-   DeepSeek
+-   Kimi
+
+------------------------------------------------------------------------
+
+# 5. Development Environment
+
+Development is performed through:
+
+VS Code + Remote SSH
+
+Workflow:
+
+Local Computer ↓ VS Code ↓ SSH Connection ↓ Remote project directory
+
+Project directory:
+
+/root/ai-assistant
+
+This allows editing files directly on the server while keeping the
+runtime environment unchanged.
+
+------------------------------------------------------------------------
+
+# 6. Project Structure
+
+ai-assistant/
+
+backend/ app/ main.py tasks.py Dockerfile requirements.txt
+
+bot/ app/ main.py Dockerfile requirements.txt
+
+infra/ docker-compose.yml
+
+worker/ (future AI workers)
+
+storage/ input files generated outputs
+
+docs/ documentation
+
+.env
+
+README.md
+
+------------------------------------------------------------------------
+
+# 7. Environment Configuration
+
+The system configuration is stored in a .env file.
+
+Example:
+
+POSTGRES_DB=ai_assistant POSTGRES_USER=ai_user
+POSTGRES_PASSWORD=strongpassword
+
+DATABASE_URL=postgresql://ai_user:strongpassword@postgres:5432/ai_assistant
+
+REDIS_URL=redis://redis:6379/0
+
+TELEGRAM_BOT_TOKEN=`<token>`{=html}
+
+OPENAI_API_KEY=`<optional>`{=html} DEEPSEEK_API_KEY=`<optional>`{=html}
+KIMI_API_KEY=`<optional>`{=html}
+
+STORAGE_INPUT_DIR=/storage/input STORAGE_OUTPUT_DIR=/storage/output
+
+BACKEND_HOST=0.0.0.0 BACKEND_PORT=8000
+
+------------------------------------------------------------------------
+
+# 8. Current API Endpoints
+
+GET /health
+
+Returns backend status.
+
+POST /tasks
+
+Creates a new task.
+
+Current implementation stores tasks in memory for MVP testing.
+
+Future version will persist tasks in PostgreSQL.
+
+------------------------------------------------------------------------
+
+# 9. Telegram Bot Capabilities
+
+Current bot commands:
+
+/start /health
+
+The bot communicates with backend API to verify system status.
+
+Next step:
+
+Add command:
+
+/task
+
+Which will create tasks in the backend.
+
+------------------------------------------------------------------------
+
+# 10. Development Workflow
+
+All coding is now performed through VS Code + Codex.
+
+Typical workflow:
+
+1.  Open project in VS Code
+2.  Use Codex prompts to modify files
+3.  Review code changes
+4.  Rebuild containers
+
+Example:
+
+cd /root/ai-assistant/infra docker compose up -d --build backend
+
+Testing endpoints:
+
+http://SERVER_IP:8000/docs
+
+------------------------------------------------------------------------
+
+# 11. Next Development Steps
+
+Immediate next milestones:
+
+1.  Task System
+
+-   create tasks via API
+-   send tasks from Telegram
+
+2.  Worker Service
+
+-   background processing
+-   Redis queue
+
+3.  AI Processing
+
+Workers will:
+
+-   read tasks
+-   call LLM providers
+-   produce results
+
+4.  Multi-Agent System
+
+Agents will include:
+
+-   Business Analyst
+-   Research Agent
+-   Writer Agent
+-   Orchestrator Agent
+
+------------------------------------------------------------------------
+
+# 12. Long-Term Vision
+
+The system will evolve into a multi-agent AI platform capable of:
+
+-   autonomous task decomposition
+-   collaboration between agents
+-   knowledge base integration
+-   SaaS deployment
+
+Future interfaces:
+
+-   Web UI
+-   API integrations
+-   enterprise workflows
+
+Telegram will remain the primary lightweight interface.
+
+------------------------------------------------------------------------
+
+# 13. Current Project Stage
+
+Current stage:
+
+MVP Infrastructure Completed
+
+Infrastructure is operational and ready for feature development.
+
+Next focus:
+
+Task orchestration and AI processing.

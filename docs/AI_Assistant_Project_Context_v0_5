@@ -1,0 +1,262 @@
+# AI Assistant Platform
+
+## Project Context v0.5
+
+### Overview
+
+AI Assistant Platform --- это система, которая принимает задачи от
+пользователя и выполняет их с помощью AI‑агентов. Главный интерфейс
+взаимодействия --- **Telegram Bot**. Архитектура строится как **task
+execution platform**, которая в будущем эволюционирует в **multi‑agent
+orchestration system**.
+
+------------------------------------------------------------------------
+
+## Infrastructure
+
+Server: - VPS: Hetzner - OS: Ubuntu 24.04 - Access: VS Code Remote SSH
+
+Development stack: - Docker - Docker Compose - Git - VS Code - Codex
+
+------------------------------------------------------------------------
+
+## Current Architecture
+
+Telegram → Bot (aiogram) → Backend API (FastAPI) → PostgreSQL → Redis
+
+------------------------------------------------------------------------
+
+## Running Services
+
+Через Docker Compose:
+
+-   bot
+-   backend
+-   redis
+-   postgres
+
+------------------------------------------------------------------------
+
+## Project Structure
+
+    ai-assistant
+    │
+    ├── bot
+    │   ├── app
+    │   │   └── main.py
+    │   ├── Dockerfile
+    │   └── requirements.txt
+    │
+    ├── backend
+    │   ├── app
+    │   │   ├── main.py
+    │   │   └── tasks.py
+    │   ├── Dockerfile
+    │   └── requirements.txt
+    │
+    ├── infra
+    │   └── docker-compose.yml
+    │
+    └── docs
+
+------------------------------------------------------------------------
+
+## Current Functionality
+
+### Telegram Bot Commands
+
+    /start
+    /health
+    /task
+
+Example:
+
+    /task Проанализируй материалы клиента
+
+------------------------------------------------------------------------
+
+### Backend Endpoints
+
+    GET /health
+    POST /tasks
+
+Example request:
+
+``` json
+{
+  "input_text": "..."
+}
+```
+
+Example response:
+
+``` json
+{
+"id": "uuid",
+"text": "test",
+"status": "created"
+}
+```
+
+------------------------------------------------------------------------
+
+## Git
+
+Git repository initialized.
+
+Current milestone commit:
+
+    mvp: telegram task command connected to backend
+
+Git используется для:
+
+-   контроля версий
+-   безопасного рефакторинга
+-   интеграции с AI coding agents
+
+------------------------------------------------------------------------
+
+## Development Status
+
+Текущий этап:
+
+**MVP Infrastructure Completed**
+
+Рабочий pipeline:
+
+Telegram → Bot → Backend → Task created
+
+------------------------------------------------------------------------
+
+## Next Development Stage
+
+### Task Execution System
+
+Следующие задачи:
+
+1.  Сохранять задачи в PostgreSQL
+2.  Добавить Redis queue
+3.  Реализовать Worker service
+4.  Реализовать AI processing pipeline
+
+Будущая архитектура:
+
+Telegram → Bot → Backend → PostgreSQL → Redis Queue → Worker → AI
+Processing
+
+------------------------------------------------------------------------
+
+## Future Roadmap
+
+Stage 2:
+
+Single Worker AI pipeline
+
+Stage 3:
+
+Supervisor agent Specialized agents
+
+Stage 4:
+
+Tool ecosystem External integrations
+
+------------------------------------------------------------------------
+
+# Start Context for New Chat
+
+Мы продолжаем разработку проекта **AI Assistant Platform**.
+
+Документация проекта: - Project Context v0.2 - Project Context v0.3 -
+Project Context v0.4 - Project Context v0.5
+
+------------------------------------------------------------------------
+
+## Infrastructure
+
+Server: - VPS: Hetzner - Ubuntu 24.04 - Docker + Docker Compose
+
+Development environment:
+
+VS Code Remote SSH Git Codex
+
+------------------------------------------------------------------------
+
+## Project Structure
+
+    ai-assistant
+     ├── bot
+     ├── backend
+     └── infra
+
+------------------------------------------------------------------------
+
+## Running Services
+
+-   bot
+-   backend
+-   redis
+-   postgres
+
+------------------------------------------------------------------------
+
+## Current Architecture
+
+Telegram → Bot (aiogram) → Backend (FastAPI) → PostgreSQL → Redis
+
+------------------------------------------------------------------------
+
+## Current Functionality
+
+Telegram Bot commands:
+
+    /start
+    /health
+    /task
+
+Backend endpoint:
+
+    POST /tasks
+
+Request format:
+
+``` json
+{
+  "input_text": "..."
+}
+```
+
+Backend creates a task and returns `task_id`.
+
+------------------------------------------------------------------------
+
+## Current Development Status
+
+Stage:
+
+**MVP Infrastructure Completed**
+
+Working pipeline:
+
+Telegram → Bot → Backend → Task created
+
+------------------------------------------------------------------------
+
+## Next Development Goal
+
+Task Execution System
+
+Tasks:
+
+1.  PostgreSQL task storage
+2.  Redis queue
+3.  Worker service
+4.  AI execution pipeline
+
+Future architecture:
+
+Telegram → Bot → Backend → PostgreSQL → Redis Queue → Worker → AI Agents
+
+------------------------------------------------------------------------
+
+All development instructions should be written as **Codex prompts** for
+direct usage in VS Code.
