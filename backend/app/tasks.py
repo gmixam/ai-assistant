@@ -6,6 +6,10 @@ from pydantic import BaseModel
 
 class TaskCreateRequest(BaseModel):
     input_text: str
+    telegram_chat_id: Optional[int] = None
+    telegram_user_id: Optional[int] = None
+    telegram_message_id: Optional[int] = None
+    reply_to_message_id: Optional[int] = None
 
 
 class TaskCreateResponse(BaseModel):
@@ -14,6 +18,10 @@ class TaskCreateResponse(BaseModel):
     status: str
     result_text: Optional[str] = None
     error_text: Optional[str] = None
+    telegram_chat_id: Optional[int] = None
+    telegram_user_id: Optional[int] = None
+    telegram_message_id: Optional[int] = None
+    reply_to_message_id: Optional[int] = None
     created_at: datetime
     updated_at: datetime
 
@@ -24,5 +32,9 @@ class TaskResponse(BaseModel):
     status: str
     result_text: Optional[str] = None
     error_text: Optional[str] = None
+    telegram_chat_id: Optional[int] = None
+    telegram_user_id: Optional[int] = None
+    telegram_message_id: Optional[int] = None
+    reply_to_message_id: Optional[int] = None
     created_at: datetime
     updated_at: datetime

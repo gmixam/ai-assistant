@@ -47,6 +47,17 @@ Expected:
 - `PASS: worker error_text is present`
 - `SMOKE WORKER TEST PASSED`
 
+OpenAI helper targets:
+```bash
+make smoke-worker-openai-no-key   # expected failed + error_text
+make smoke-worker-openai          # expected done + result_text (requires OPENAI_API_KEY)
+```
+
+Telegram metadata persistence smoke:
+```bash
+make smoke-telegram-metadata
+```
+
 ## What to do on fail
 1. Check backend logs:
 ```bash

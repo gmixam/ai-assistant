@@ -38,7 +38,15 @@ def health():
 @app.post("/tasks", response_model=TaskCreateResponse)
 def create_task(task: TaskCreateRequest, db: Session = Depends(get_db)):
     task_id = str(uuid4())
-    db_task = Task(id=task_id, input_text=task.input_text, status="created")
+    db_task = Task(
+        id=task_id,
+        input_text=task.input_text,
+        status="created",
+        telegram_chat_id=task.telegram_chat_id,
+        telegram_user_id=task.telegram_user_id,
+        telegram_message_id=task.telegram_message_id,
+        reply_to_message_id=task.reply_to_message_id,
+    )
     db.add(db_task)
     db.commit()
     db.refresh(db_task)
@@ -63,6 +71,10 @@ def create_task(task: TaskCreateRequest, db: Session = Depends(get_db)):
         "status": db_task.status,
         "result_text": db_task.result_text,
         "error_text": db_task.error_text,
+        "telegram_chat_id": db_task.telegram_chat_id,
+        "telegram_user_id": db_task.telegram_user_id,
+        "telegram_message_id": db_task.telegram_message_id,
+        "reply_to_message_id": db_task.reply_to_message_id,
         "created_at": db_task.created_at,
         "updated_at": db_task.updated_at,
     }
@@ -79,6 +91,10 @@ def get_task(task_id: str, db: Session = Depends(get_db)):
         "status": task.status,
         "result_text": task.result_text,
         "error_text": task.error_text,
+        "telegram_chat_id": task.telegram_chat_id,
+        "telegram_user_id": task.telegram_user_id,
+        "telegram_message_id": task.telegram_message_id,
+        "reply_to_message_id": task.reply_to_message_id,
         "created_at": task.created_at,
         "updated_at": task.updated_at,
     }

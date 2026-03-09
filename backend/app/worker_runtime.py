@@ -8,6 +8,7 @@ from .executors.factory import build_executor
 from .models import Task
 from .queue import dequeue_task, enqueue_task
 from .schema import ensure_task_optional_columns
+from .telegram_delivery import deliver_task_to_telegram
 
 logger = logging.getLogger("task_worker")
 
@@ -58,8 +59,12 @@ def process_task(task_id: str, executor: TaskExecutor) -> None:
         db.refresh(task)
         if task.status == "done":
             logger.info("processing completed", extra={"task_id": task_id, "status": task.status})
+            if not deliver_task_to_telegram(task):
+                logger.info("task done without Telegram delivery", extra={"task_id": task_id})
         else:
             logger.error("processing failed", extra={"task_id": task_id, "status": task.status})
+            if not deliver_task_to_telegram(task):
+                logger.info("task failed without Telegram delivery", extra={"task_id": task_id})
     except Exception as exc:
         db.rollback()
         logger.exception("processing failed", extra={"task_id": task_id})

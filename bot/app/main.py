@@ -47,7 +47,13 @@ async def task_handler(message: Message):
         async with httpx.AsyncClient(timeout=10.0) as client:
             response = await client.post(
                 f"{BACKEND_URL}/tasks",
-                json={"input_text": task_text},
+                json={
+                    "input_text": task_text,
+                    "telegram_chat_id": message.chat.id,
+                    "telegram_user_id": message.from_user.id if message.from_user else None,
+                    "telegram_message_id": message.message_id,
+                    "reply_to_message_id": message.message_id,
+                },
             )
     except httpx.RequestError:
         await message.answer("Backend недоступен. Попробуйте позже.")
