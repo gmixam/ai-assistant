@@ -1,4 +1,4 @@
-.PHONY: up ps debug-worker smoke smoke-worker smoke-worker-openai smoke-worker-openai-no-key smoke-telegram-metadata smoke-task-attachment smoke-attachment-extract-local smoke-telegram-delivery
+.PHONY: up ps worker-up worker-stop debug-worker smoke smoke-normal smoke-worker smoke-worker-debug smoke-worker-openai smoke-worker-openai-no-key smoke-telegram-metadata smoke-task-attachment smoke-attachment-extract-local smoke-telegram-delivery
 
 up:
 	docker compose -f infra/docker-compose.yml up -d --build
@@ -6,19 +6,36 @@ up:
 ps:
 	docker compose -f infra/docker-compose.yml ps
 
+worker-up:
+	docker compose -f infra/docker-compose.yml up -d worker
+
+worker-stop:
+	docker compose -f infra/docker-compose.yml stop worker || true
+
 debug-worker:
 	docker exec -it ai_backend python -m app.worker_runtime --max-tasks 1
 
 smoke:
+	docker compose -f infra/docker-compose.yml stop worker || true
 	./scripts/smoke_task_flow.sh
+
+smoke-normal:
+	docker compose -f infra/docker-compose.yml up -d worker
+	./scripts/smoke_worker_flow.sh
 
 smoke-worker:
 	./scripts/smoke_worker_flow.sh
 
+smoke-worker-debug:
+	docker compose -f infra/docker-compose.yml stop worker || true
+	WORKER_MODE=debug ./scripts/smoke_worker_flow.sh
+
 smoke-worker-openai:
+	docker compose -f infra/docker-compose.yml stop worker || true
 	WORKER_MODE=debug TASK_EXECUTOR=openai EXPECTED_FINAL_STATUS=done ./scripts/smoke_worker_flow.sh
 
 smoke-worker-openai-no-key:
+	docker compose -f infra/docker-compose.yml stop worker || true
 	WORKER_MODE=debug TASK_EXECUTOR=openai EXPECTED_FINAL_STATUS=failed ./scripts/smoke_worker_flow.sh
 
 smoke-telegram-metadata:
@@ -31,4 +48,5 @@ smoke-attachment-extract-local:
 	./scripts/smoke_attachment_extract_local.sh
 
 smoke-telegram-delivery:
+	docker compose -f infra/docker-compose.yml stop worker || true
 	./scripts/smoke_telegram_delivery_flow.sh

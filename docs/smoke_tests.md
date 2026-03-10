@@ -1,20 +1,34 @@
 # Smoke Tests
 
 ## What this smoke-test validates
-`make smoke` validates the current Task Flow end-to-end:
+`make smoke` validates queue/persistence behavior in isolated debug conditions:
 - `POST /tasks` creates a task.
 - Task can be fetched via `GET /tasks/{task_id}`.
 - Task status is `queued`.
 - `task_id` is present in Redis queue.
 - `task_id` is present in PostgreSQL.
 
+`make smoke-worker` validates normal operation mode with dedicated `ai_worker`:
+- backend accepts a task
+- `ai_worker` consumes it
+- task reaches the expected final state
+- result or error text is persisted as expected
+
 ## How to run
 From repository root:
 ```bash
 make up
+make smoke-normal
 make smoke
-make smoke-worker
 ```
+
+Recommended mode-specific entry points:
+- `make smoke-normal`:
+  brings `ai_worker` up and runs normal-mode worker smoke
+- `make smoke`:
+  stops `ai_worker` first and runs isolated queue/persistence smoke
+- `make smoke-worker-debug`:
+  stops `ai_worker` first and runs isolated one-shot worker smoke
 
 For final normal-operation readiness, the manual Telegram document E2E remains the decisive check because it validates:
 - real Telegram file intake
@@ -30,6 +44,9 @@ Optional environment overrides:
 
 ## Success criteria
 Successful run prints:
+- `PASS: backend healthcheck is reachable`
+- `PASS: compose worker is not running`
+- `PASS: no manual worker is running inside backend`
 - `PASS: task created`
 - `PASS: task returned by API`
 - `PASS: task status is queued`
@@ -38,6 +55,9 @@ Successful run prints:
 - `SMOKE TEST PASSED`
 
 For worker lifecycle smoke:
+- `PASS: backend healthcheck is reachable`
+- `PASS: compose worker is running`
+- `PASS: no manual worker is running inside backend`
 - `PASS: worker smoke task created`
 - `PASS: worker lifecycle reached done`
 - `PASS: worker result_text is present`
@@ -45,12 +65,14 @@ For worker lifecycle smoke:
 
 Normal mode:
 - `make smoke-worker` expects the dedicated `ai_worker` Compose service to be already running.
+- `make smoke-normal` is an alias for the same normal-mode worker smoke.
+- `make smoke-normal` is the deterministic entry point because it starts `ai_worker` first.
 
 Provider-stub smoke (expected controlled failure):
 ```bash
-TASK_EXECUTOR=openai EXPECTED_FINAL_STATUS=failed make smoke-worker
-TASK_EXECUTOR=deepseek EXPECTED_FINAL_STATUS=failed make smoke-worker
-TASK_EXECUTOR=kimi EXPECTED_FINAL_STATUS=failed make smoke-worker
+WORKER_MODE=debug TASK_EXECUTOR=openai EXPECTED_FINAL_STATUS=failed ./scripts/smoke_worker_flow.sh
+WORKER_MODE=debug TASK_EXECUTOR=deepseek EXPECTED_FINAL_STATUS=failed ./scripts/smoke_worker_flow.sh
+WORKER_MODE=debug TASK_EXECUTOR=kimi EXPECTED_FINAL_STATUS=failed ./scripts/smoke_worker_flow.sh
 ```
 Expected:
 - `PASS: worker lifecycle reached failed`
@@ -64,6 +86,7 @@ OpenAI helper targets:
 ```bash
 make smoke-worker-openai-no-key   # expected failed + error_text
 make smoke-worker-openai          # expected done + result_text (requires OPENAI_API_KEY)
+make smoke-worker-debug           # isolated one-shot worker in debug mode
 ```
 
 Telegram metadata persistence smoke:
@@ -82,6 +105,8 @@ Validates:
 
 Note:
 - `make smoke-telegram-delivery` is a diagnostic smoke and intentionally starts a one-shot debug worker with temporary env overrides.
+- It requires `ai_worker` to be stopped and no manual worker to be running inside `ai_backend`.
+- The target enforces this by stopping `ai_worker` before the script runs.
 
 Task attachment metadata persistence smoke:
 ```bash
@@ -119,8 +144,8 @@ Manual file-reading scenarios (worker):
 
 Final MVP document-analysis readiness gate:
 1. Normal stack is up via `make up`.
-2. `make smoke` passes in an environment without stray debug worker competition.
-3. `make smoke-worker` passes with dedicated `ai_worker`.
+2. `make smoke-worker` passes with dedicated `ai_worker`.
+3. `make smoke` passes with `ai_worker` stopped and no stray manual worker.
 4. Manual Telegram document scenario passes end-to-end with `delivery_status=delivered`.
 5. Task API confirms attachment download/extraction diagnostics for the tested document.
 
@@ -145,6 +170,18 @@ cd infra && docker compose ps
 ```bash
 make smoke
 ```
+
+## Mode split
+Normal mode:
+- `make up`
+- `make smoke-normal`
+- `make smoke-worker` only if `ai_worker` is already running
+- PASS requires running `ai_worker` and no manual worker inside `ai_backend`
+
+Debug mode:
+- run `make smoke`, `make smoke-worker-debug`, `make smoke-worker-openai-no-key`, or `make smoke-telegram-delivery`
+- PASS requires no running `ai_worker` and no pre-existing manual worker inside `ai_backend`
+- these targets stop `ai_worker` before execution to keep the run isolated
 
 ## Diagnose one task end-to-end
 For one task id, the fastest normal-operation inspection path is grep by `task_id=` in worker logs:

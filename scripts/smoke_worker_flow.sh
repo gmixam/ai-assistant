@@ -35,7 +35,25 @@ require_cmd curl
 require_cmd docker
 require_cmd python3
 
+list_backend_worker_runtime_pids() {
+  docker exec "$BACKEND_CONTAINER" python3 - <<'PY'
+import os
+
+for pid in sorted(os.listdir("/proc"), key=lambda x: int(x) if x.isdigit() else 10**9):
+    if not pid.isdigit():
+        continue
+    try:
+        cmdline = open(f"/proc/{pid}/cmdline", "rb").read().decode("utf-8", "ignore").replace("\x00", " ").strip()
+    except Exception:
+        continue
+    if "python -m app.worker_runtime" in cmdline:
+        print(pid)
+PY
+}
+
 docker inspect "$BACKEND_CONTAINER" >/dev/null 2>&1 || fail "backend container not found: $BACKEND_CONTAINER"
+curl -fsS "$API_BASE_URL/health" >/dev/null || fail "backend healthcheck failed: $API_BASE_URL/health"
+echo "PASS: backend healthcheck is reachable"
 
 if [[ -n "$TASK_EXECUTOR" && "$WORKER_MODE" == "service" ]]; then
   WORKER_MODE="debug"
@@ -73,7 +91,20 @@ if [[ "$WORKER_MODE" == "service" ]]; then
     docker inspect -f '{{.State.Running}}' "$WORKER_CONTAINER" 2>/dev/null || echo false
   )"
   [[ "$worker_running" == "true" ]] || fail "worker container is not running: $WORKER_CONTAINER"
+  echo "PASS: compose worker is running"
+  manual_worker_pids="$(list_backend_worker_runtime_pids)"
+  [[ -z "$manual_worker_pids" ]] || fail "service smoke requires no manual worker inside backend (found pids: $manual_worker_pids)"
+  echo "PASS: no manual worker is running inside backend"
 else
+  if docker inspect "$WORKER_CONTAINER" >/dev/null 2>&1; then
+    worker_running="$(
+      docker inspect -f '{{.State.Running}}' "$WORKER_CONTAINER" 2>/dev/null || echo false
+    )"
+    [[ "$worker_running" != "true" ]] || fail "debug smoke requires ai_worker to be stopped: $WORKER_CONTAINER"
+  fi
+  existing_manual_worker_pids="$(list_backend_worker_runtime_pids)"
+  [[ -z "$existing_manual_worker_pids" ]] || fail "debug smoke requires no existing manual worker inside backend (found pids: $existing_manual_worker_pids)"
+  echo "PASS: smoke debug mode is isolated from normal worker runtime"
   if [[ -n "$TASK_EXECUTOR" ]]; then
     docker exec -e TASK_EXECUTOR="$TASK_EXECUTOR" "$BACKEND_CONTAINER" python -m app.worker_runtime >"$worker_log_file" 2>&1 &
   else

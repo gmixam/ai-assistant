@@ -14,6 +14,7 @@ fi
 
 API_BASE_URL="${API_BASE_URL:-http://localhost:8000}"
 BACKEND_CONTAINER="${BACKEND_CONTAINER:-ai_backend}"
+WORKER_CONTAINER="${WORKER_CONTAINER:-ai_worker}"
 WORKER_WAIT_TIMEOUT_SECONDS="${WORKER_WAIT_TIMEOUT_SECONDS:-40}"
 WORKER_POLL_INTERVAL_SECONDS="${WORKER_POLL_INTERVAL_SECONDS:-1}"
 FAKE_CHAT_ID="${FAKE_CHAT_ID:-123456789}"
@@ -33,7 +34,37 @@ require_cmd curl
 require_cmd docker
 require_cmd python3
 
+list_backend_worker_runtime_pids() {
+  docker exec "$BACKEND_CONTAINER" python3 - <<'PY'
+import os
+
+for pid in sorted(os.listdir("/proc"), key=lambda x: int(x) if x.isdigit() else 10**9):
+    if not pid.isdigit():
+        continue
+    try:
+        cmdline = open(f"/proc/{pid}/cmdline", "rb").read().decode("utf-8", "ignore").replace("\x00", " ").strip()
+    except Exception:
+        continue
+    if "python -m app.worker_runtime" in cmdline:
+        print(pid)
+PY
+}
+
 docker inspect "$BACKEND_CONTAINER" >/dev/null 2>&1 || fail "backend container not found: $BACKEND_CONTAINER"
+curl -fsS "$API_BASE_URL/health" >/dev/null || fail "backend healthcheck failed: $API_BASE_URL/health"
+echo "PASS: backend healthcheck is reachable"
+
+if docker inspect "$WORKER_CONTAINER" >/dev/null 2>&1; then
+  worker_running="$(
+    docker inspect -f '{{.State.Running}}' "$WORKER_CONTAINER" 2>/dev/null || echo false
+  )"
+  [[ "$worker_running" != "true" ]] || fail "telegram delivery smoke requires ai_worker to be stopped: $WORKER_CONTAINER"
+fi
+echo "PASS: compose worker is not running"
+
+manual_worker_pids="$(list_backend_worker_runtime_pids)"
+[[ -z "$manual_worker_pids" ]] || fail "telegram delivery smoke requires no existing manual worker inside backend (found pids: $manual_worker_pids)"
+echo "PASS: no manual worker is running inside backend"
 
 worker_pid=""
 cleanup() {
@@ -59,7 +90,7 @@ task_id="$(
 [[ -n "$task_id" ]] || fail "task_id is missing"
 echo "PASS: delivery smoke task created"
 
-# Force delivery failure while keeping worker processing path healthy.
+# Force delivery failure while keeping worker processing path healthy in isolated debug mode.
 docker exec \
   -e TASK_EXECUTOR=mock \
   -e TELEGRAM_API_BASE_URL=http://127.0.0.1:9 \
