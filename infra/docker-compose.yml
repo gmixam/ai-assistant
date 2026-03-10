@@ -26,6 +26,8 @@ services:
       context: ../backend
     container_name: ai_backend
     restart: always
+    env_file:
+      - ../.env
     ports:
       - "8000:8000"
     depends_on:
@@ -47,4 +49,3 @@ services:
 volumes:
   postgres_data:
   redis_data:
-

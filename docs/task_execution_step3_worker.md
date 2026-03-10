@@ -39,6 +39,10 @@ Run worker inside current backend container:
 docker exec -it ai_backend python -m app.worker_runtime
 ```
 
+Important:
+- `ai_backend` must receive the same runtime env needed by worker modules, including `TELEGRAM_BOT_TOKEN`.
+- In the current MVP this is provided through `infra/docker-compose.yml` via `env_file` on the `backend` service.
+
 One-shot mode (for diagnostics):
 ```bash
 docker exec -it ai_backend python -m app.worker_runtime --max-tasks 1
