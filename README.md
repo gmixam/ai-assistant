@@ -27,6 +27,6 @@ Target user flow:
 `Telegram document -> attachment download -> text extraction -> AI analysis -> Telegram reply`
 
 Primary operational references:
-- [docs/task_execution_step7_telegram_e2e.md](/root/ai-assistant/docs/task_execution_step7_telegram_e2e.md)
-- [docs/task_execution_step8_file_reading_mvp.md](/root/ai-assistant/docs/task_execution_step8_file_reading_mvp.md)
-- [docs/smoke_tests.md](/root/ai-assistant/docs/smoke_tests.md)
+- [task_execution_step7_telegram_e2e.md](/root/ai-assistant/docs/02_execution_pipeline/task_execution_step7_telegram_e2e.md)
+- [task_execution_step8_file_reading_mvp.md](/root/ai-assistant/docs/02_execution_pipeline/task_execution_step8_file_reading_mvp.md)
+- [smoke_tests.md](/root/ai-assistant/docs/03_operations/smoke_tests.md)
