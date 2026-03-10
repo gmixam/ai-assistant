@@ -16,6 +16,12 @@ make smoke
 make smoke-worker
 ```
 
+For final normal-operation readiness, the manual Telegram document E2E remains the decisive check because it validates:
+- real Telegram file intake
+- real attachment download from Telegram API
+- real worker execution path in `ai_worker`
+- real Telegram reply delivery
+
 Optional environment overrides:
 - `API_BASE_URL` (default: `http://localhost:8000`)
 - `TASK_QUEUE_NAME` (default: `tasks:queue`)
@@ -110,6 +116,13 @@ Manual file-reading scenarios (worker):
 2. `application/pdf` document + caption -> expect extracted text used in execution.
 3. `.docx` document + caption -> expect extracted text used in execution.
 4. Large document -> expect successful processing with `was_truncated=true` and `sent_text_length < extracted_text_length`.
+
+Final MVP document-analysis readiness gate:
+1. Normal stack is up via `make up`.
+2. `make smoke` passes in an environment without stray debug worker competition.
+3. `make smoke-worker` passes with dedicated `ai_worker`.
+4. Manual Telegram document scenario passes end-to-end with `delivery_status=delivered`.
+5. Task API confirms attachment download/extraction diagnostics for the tested document.
 
 Manual delivery diagnostics scenarios:
 1. Successful delivery path -> expect `delivery_status=delivered`, non-null `delivered_at`.

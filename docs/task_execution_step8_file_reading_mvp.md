@@ -5,6 +5,14 @@ Add real file reading to worker pipeline for Telegram document attachments:
 
 `Telegram file_id -> getFile -> download -> local save -> text extraction -> executor input`
 
+## Status in normal operation mode
+For normal operation, attachment download and extraction are expected to run only in `ai_worker`.
+
+This means:
+- `ai_backend` stores task and attachment metadata and enqueues work
+- `ai_worker` downloads Telegram files, writes to shared `/storage`, extracts text, and executes analysis
+- manual worker launch inside `ai_backend` is diagnostic only and is no longer the standard run mode
+
 ## Supported attachment types (MVP)
 - `text/plain`
 - `application/pdf`
@@ -84,3 +92,8 @@ PDF_SAMPLE_PATH=/absolute/path/to/sample.pdf make smoke-attachment-extract-local
 5. For unsupported MIME or broken file:
    - task should become `failed`
    - `error_text` should explain the failure.
+
+## Remaining MVP limitations
+- supported document formats are still limited to `txt`, `pdf`, and `docx`
+- extraction diagnostics are visible through task API and logs, not through a dedicated admin UI
+- attachment failures still stop the task instead of falling back to partial processing
