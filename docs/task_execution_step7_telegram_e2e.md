@@ -66,8 +66,8 @@ make smoke-telegram-delivery
 ```
 
 ## Manual Telegram E2E test
-1. Ensure `bot`, `backend`, `postgres`, `redis` are running.
-2. Start worker in environment where `TELEGRAM_BOT_TOKEN` is available.
+1. Ensure `bot`, `backend`, `worker`, `postgres`, `redis` are running.
+2. Use `ai_worker` as the normal worker runtime.
 3. In Telegram, validate scenarios:
    - text only: send plain text (without `/task`)
    - file with caption: send `document` with caption instruction
@@ -81,3 +81,6 @@ make smoke-telegram-delivery
 6. For delivery diagnostics, verify with API:
    - `delivery_status=delivered` on successful Telegram send
    - `delivery_status=failed` with `delivery_error` on delivery errors.
+
+Debug/fallback only:
+- manual `docker exec -it ai_backend python -m app.worker_runtime` should be used only for diagnostics or temporary recovery, not as the normal operating mode.

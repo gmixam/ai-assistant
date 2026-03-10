@@ -1,4 +1,13 @@
-.PHONY: smoke smoke-worker smoke-worker-openai smoke-worker-openai-no-key smoke-telegram-metadata smoke-task-attachment smoke-attachment-extract-local smoke-telegram-delivery
+.PHONY: up ps debug-worker smoke smoke-worker smoke-worker-openai smoke-worker-openai-no-key smoke-telegram-metadata smoke-task-attachment smoke-attachment-extract-local smoke-telegram-delivery
+
+up:
+	docker compose -f infra/docker-compose.yml up -d --build
+
+ps:
+	docker compose -f infra/docker-compose.yml ps
+
+debug-worker:
+	docker exec -it ai_backend python -m app.worker_runtime --max-tasks 1
 
 smoke:
 	./scripts/smoke_task_flow.sh
@@ -7,10 +16,10 @@ smoke-worker:
 	./scripts/smoke_worker_flow.sh
 
 smoke-worker-openai:
-	TASK_EXECUTOR=openai EXPECTED_FINAL_STATUS=done ./scripts/smoke_worker_flow.sh
+	WORKER_MODE=debug TASK_EXECUTOR=openai EXPECTED_FINAL_STATUS=done ./scripts/smoke_worker_flow.sh
 
 smoke-worker-openai-no-key:
-	TASK_EXECUTOR=openai EXPECTED_FINAL_STATUS=failed ./scripts/smoke_worker_flow.sh
+	WORKER_MODE=debug TASK_EXECUTOR=openai EXPECTED_FINAL_STATUS=failed ./scripts/smoke_worker_flow.sh
 
 smoke-telegram-metadata:
 	./scripts/smoke_telegram_metadata_flow.sh

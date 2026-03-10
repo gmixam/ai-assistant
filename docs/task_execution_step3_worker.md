@@ -33,8 +33,23 @@ Worker logs include:
 - processing completed
 - processing failed
 
-## Manual run (without docker-compose changes)
-Run worker inside current backend container:
+## Normal operation mode
+Run the system with dedicated services, including `ai_worker`:
+```bash
+docker compose -f infra/docker-compose.yml up -d --build
+```
+
+Expected service roles:
+- `ai_backend` serves API traffic only.
+- `ai_worker` is the штатный worker process for queue consumption and task execution.
+
+Notes:
+- `worker` uses the same backend image and the same `env_file` as `backend`.
+- `worker` depends on `postgres` and `redis`.
+- `backend` and `worker` share `/storage` through a named volume so attachment files written under `STORAGE_INPUT_DIR=/storage/input` remain consistent across both containers.
+
+## Debug / fallback mode
+Run worker manually inside the backend container only for diagnostics or emergency fallback:
 ```bash
 docker exec -it ai_backend python -m app.worker_runtime
 ```
@@ -48,17 +63,7 @@ One-shot mode (for diagnostics):
 docker exec -it ai_backend python -m app.worker_runtime --max-tasks 1
 ```
 
-## Compose run (MVP-safe)
-Worker can also run as a dedicated Compose service while keeping the manual backend-container run as a fallback:
-```bash
-docker compose -f infra/docker-compose.yml up -d --build worker
-```
-
-Notes:
-- `worker` uses the same backend image and the same `env_file` as `backend`.
-- `worker` depends on `postgres` and `redis`.
-- `backend` and `worker` share `/storage` through a named volume so attachment files written under `STORAGE_INPUT_DIR=/storage/input` remain consistent across both containers.
-- Manual `docker exec ... python -m app.worker_runtime` remains available for diagnostics.
+Manual `docker exec ... python -m app.worker_runtime` remains available for diagnostics.
 
 ## Smoke-check
 Run:
@@ -68,6 +73,12 @@ make smoke-worker
 
 Smoke worker flow:
 - create task via API
-- run worker runtime
+- expect the normal `ai_worker` service to consume the queue
 - wait until task status becomes `done`
 - fail with non-zero exit if status becomes `failed` or timeout is reached
+
+Provider override smokes intentionally use debug mode so they can inject temporary env overrides:
+```bash
+make smoke-worker-openai-no-key
+make smoke-worker-openai
+```

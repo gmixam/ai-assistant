@@ -14,6 +14,8 @@ fi
 
 API_BASE_URL="${API_BASE_URL:-http://localhost:8000}"
 BACKEND_CONTAINER="${BACKEND_CONTAINER:-ai_backend}"
+WORKER_CONTAINER="${WORKER_CONTAINER:-ai_worker}"
+WORKER_MODE="${WORKER_MODE:-service}"
 WORKER_WAIT_TIMEOUT_SECONDS="${WORKER_WAIT_TIMEOUT_SECONDS:-40}"
 WORKER_POLL_INTERVAL_SECONDS="${WORKER_POLL_INTERVAL_SECONDS:-1}"
 WORKER_STARTUP_SLEEP_SECONDS="${WORKER_STARTUP_SLEEP_SECONDS:-1}"
@@ -35,34 +37,17 @@ require_cmd python3
 
 docker inspect "$BACKEND_CONTAINER" >/dev/null 2>&1 || fail "backend container not found: $BACKEND_CONTAINER"
 
+if [[ -n "$TASK_EXECUTOR" && "$WORKER_MODE" == "service" ]]; then
+  WORKER_MODE="debug"
+fi
+
 worker_log_file="${TMPDIR:-/tmp}/smoke-worker.$$.log"
 worker_pid=""
-worker_runtime_pid=""
-
-list_worker_runtime_pids() {
-  python3 - <<'PY'
-import os
-
-for pid in sorted(os.listdir("/proc"), key=lambda x: int(x) if x.isdigit() else 10**9):
-    if not pid.isdigit():
-        continue
-    try:
-        cmdline = open(f"/proc/{pid}/cmdline", "rb").read().decode("utf-8", "ignore").replace("\x00", " ").strip()
-    except Exception:
-        continue
-    if "python -m app.worker_runtime" in cmdline:
-        print(pid)
-PY
-}
 
 cleanup() {
   if [[ -n "$worker_pid" ]] && kill -0 "$worker_pid" >/dev/null 2>&1; then
     kill "$worker_pid" >/dev/null 2>&1 || true
     wait "$worker_pid" 2>/dev/null || true
-  fi
-  if [[ -n "$worker_runtime_pid" ]] && kill -0 "$worker_runtime_pid" >/dev/null 2>&1; then
-    kill "$worker_runtime_pid" >/dev/null 2>&1 || true
-    wait "$worker_runtime_pid" 2>/dev/null || true
   fi
 }
 trap cleanup EXIT
@@ -82,32 +67,21 @@ task_id="$(
 [[ -n "$task_id" ]] || fail "task_id is missing in POST /tasks response"
 echo "PASS: worker smoke task created"
 
-before_worker_pids="$(list_worker_runtime_pids)"
-if [[ -n "$TASK_EXECUTOR" ]]; then
-  docker exec -e TASK_EXECUTOR="$TASK_EXECUTOR" "$BACKEND_CONTAINER" python -m app.worker_runtime >"$worker_log_file" 2>&1 &
+if [[ "$WORKER_MODE" == "service" ]]; then
+  docker inspect "$WORKER_CONTAINER" >/dev/null 2>&1 || fail "worker container not found: $WORKER_CONTAINER"
+  worker_running="$(
+    docker inspect -f '{{.State.Running}}' "$WORKER_CONTAINER" 2>/dev/null || echo false
+  )"
+  [[ "$worker_running" == "true" ]] || fail "worker container is not running: $WORKER_CONTAINER"
 else
-  docker exec "$BACKEND_CONTAINER" python -m app.worker_runtime >"$worker_log_file" 2>&1 &
+  if [[ -n "$TASK_EXECUTOR" ]]; then
+    docker exec -e TASK_EXECUTOR="$TASK_EXECUTOR" "$BACKEND_CONTAINER" python -m app.worker_runtime >"$worker_log_file" 2>&1 &
+  else
+    docker exec "$BACKEND_CONTAINER" python -m app.worker_runtime >"$worker_log_file" 2>&1 &
+  fi
+  worker_pid="$!"
+  sleep "$WORKER_STARTUP_SLEEP_SECONDS"
 fi
-worker_pid="$!"
-sleep "$WORKER_STARTUP_SLEEP_SECONDS"
-worker_runtime_pid="$(
-  BEFORE_WORKER_PIDS="$before_worker_pids" python3 - <<'PY'
-import os
-
-before = {pid for pid in os.getenv("BEFORE_WORKER_PIDS", "").splitlines() if pid.strip()}
-current = []
-for pid in sorted(os.listdir("/proc"), key=lambda x: int(x) if x.isdigit() else 10**9):
-    if not pid.isdigit():
-        continue
-    try:
-        cmdline = open(f"/proc/{pid}/cmdline", "rb").read().decode("utf-8", "ignore").replace("\x00", " ").strip()
-    except Exception:
-        continue
-    if "python -m app.worker_runtime" in cmdline and pid not in before:
-        current.append(pid)
-print(current[-1] if current else "")
-PY
-)"
 
 deadline=$((SECONDS + WORKER_WAIT_TIMEOUT_SECONDS))
 last_status=""
@@ -148,7 +122,11 @@ while (( SECONDS < deadline )); do
       continue
     fi
     echo "Worker logs:"
-    cat "$worker_log_file" || true
+    if [[ "$WORKER_MODE" == "service" ]]; then
+      docker logs --tail=50 "$WORKER_CONTAINER" || true
+    else
+      cat "$worker_log_file" || true
+    fi
     fail "worker lifecycle reached failed"
   fi
 
@@ -156,5 +134,9 @@ while (( SECONDS < deadline )); do
 done
 
 echo "Worker logs:"
-cat "$worker_log_file" || true
+if [[ "$WORKER_MODE" == "service" ]]; then
+  docker logs --tail=50 "$WORKER_CONTAINER" || true
+else
+  cat "$worker_log_file" || true
+fi
 fail "worker did not reach ${EXPECTED_FINAL_STATUS} within ${WORKER_WAIT_TIMEOUT_SECONDS}s (last status: ${last_status:-unknown})"

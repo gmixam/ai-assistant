@@ -11,6 +11,7 @@
 ## How to run
 From repository root:
 ```bash
+make up
 make smoke
 make smoke-worker
 ```
@@ -36,6 +37,9 @@ For worker lifecycle smoke:
 - `PASS: worker result_text is present`
 - `SMOKE WORKER TEST PASSED`
 
+Normal mode:
+- `make smoke-worker` expects the dedicated `ai_worker` Compose service to be already running.
+
 Provider-stub smoke (expected controlled failure):
 ```bash
 TASK_EXECUTOR=openai EXPECTED_FINAL_STATUS=failed make smoke-worker
@@ -46,6 +50,9 @@ Expected:
 - `PASS: worker lifecycle reached failed`
 - `PASS: worker error_text is present`
 - `SMOKE WORKER TEST PASSED`
+
+Debug mode:
+- provider override smokes run a temporary one-shot worker inside `ai_backend` because they need temporary env overrides that should not mutate the normal `ai_worker` service.
 
 OpenAI helper targets:
 ```bash
@@ -66,6 +73,9 @@ Validates:
 - task execution reaches `done`
 - Telegram delivery state reaches `failed` when Telegram API is unavailable
 - `delivery_error` is persisted
+
+Note:
+- `make smoke-telegram-delivery` is a diagnostic smoke and intentionally starts a one-shot debug worker with temporary env overrides.
 
 Task attachment metadata persistence smoke:
 ```bash
@@ -110,11 +120,15 @@ Manual delivery diagnostics scenarios:
 ```bash
 cd infra && docker compose logs --tail=100 backend
 ```
-2. Verify PostgreSQL and Redis containers are running:
+2. Check worker logs:
+```bash
+cd infra && docker compose logs --tail=100 worker
+```
+3. Verify PostgreSQL, Redis, backend, and worker containers are running:
 ```bash
 cd infra && docker compose ps
 ```
-3. Re-run:
+4. Re-run:
 ```bash
 make smoke
 ```
