@@ -48,6 +48,18 @@ One-shot mode (for diagnostics):
 docker exec -it ai_backend python -m app.worker_runtime --max-tasks 1
 ```
 
+## Compose run (MVP-safe)
+Worker can also run as a dedicated Compose service while keeping the manual backend-container run as a fallback:
+```bash
+docker compose -f infra/docker-compose.yml up -d --build worker
+```
+
+Notes:
+- `worker` uses the same backend image and the same `env_file` as `backend`.
+- `worker` depends on `postgres` and `redis`.
+- `backend` and `worker` share `/storage` through a named volume so attachment files written under `STORAGE_INPUT_DIR=/storage/input` remain consistent across both containers.
+- Manual `docker exec ... python -m app.worker_runtime` remains available for diagnostics.
+
 ## Smoke-check
 Run:
 ```bash
