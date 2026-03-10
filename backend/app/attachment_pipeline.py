@@ -146,6 +146,7 @@ def prepare_task_execution_input(task: Task, db: Session) -> str:
 
 
 def _download_and_extract_attachment(task: Task, attachment: TaskAttachment, db: Session) -> ExtractedAttachment:
+    filename = attachment.filename or f"attachment_{attachment.id}"
     if not TELEGRAM_BOT_TOKEN:
         _mark_attachment_failed(
             attachment,
@@ -171,22 +172,85 @@ def _download_and_extract_attachment(task: Task, attachment: TaskAttachment, db:
     attachment.download_error = None
     db.commit()
     db.refresh(attachment)
+    logger.info(
+        "event=attachment_download_started task_id=%s attachment_id=%s filename=%s download_status=%s",
+        task.id,
+        attachment.id,
+        filename,
+        attachment.download_status,
+    )
+    extraction_started = False
 
     try:
         file_path = _telegram_get_file_path(attachment.telegram_file_id)
         payload = _telegram_download_file(file_path)
         local_path = _store_attachment_bytes(task.id, attachment, payload)
+        logger.info(
+            "event=attachment_download_completed task_id=%s attachment_id=%s filename=%s download_status=downloaded bytes=%s",
+            task.id,
+            attachment.id,
+            filename,
+            len(payload),
+        )
+        extraction_started = True
+        logger.info(
+            "event=text_extraction_started task_id=%s attachment_id=%s filename=%s extractor=%s",
+            task.id,
+            attachment.id,
+            filename,
+            mime_type,
+        )
         extracted_text = _extract_text(payload, mime_type)
+        logger.info(
+            "event=text_extraction_completed task_id=%s attachment_id=%s filename=%s extractor=%s extracted_chars=%s",
+            task.id,
+            attachment.id,
+            filename,
+            mime_type,
+            len(extracted_text),
+        )
     except AttachmentProcessingError as exc:
+        if attachment.download_status == "downloading":
+            logger.error(
+                "event=attachment_download_failed task_id=%s attachment_id=%s filename=%s download_status=failed error=%s",
+                task.id,
+                attachment.id,
+                filename,
+                str(exc),
+            )
+        if extraction_started:
+            logger.error(
+                "event=text_extraction_failed task_id=%s attachment_id=%s filename=%s extractor=%s error=%s",
+                task.id,
+                attachment.id,
+                filename,
+                mime_type,
+                str(exc),
+            )
         _mark_attachment_failed(attachment, db, str(exc))
         raise
     except Exception as exc:
         message = f"unexpected attachment processing error: {exc}"
+        logger.exception(
+            "event=attachment_processing_failed task_id=%s attachment_id=%s filename=%s error=%s",
+            task.id,
+            attachment.id,
+            filename,
+            message,
+        )
         _mark_attachment_failed(attachment, db, message)
         raise AttachmentProcessingError(message) from exc
 
     if not extracted_text.strip():
         message = f"extracted text is empty for attachment {attachment.filename or attachment.id}"
+        logger.error(
+            "event=text_extraction_failed task_id=%s attachment_id=%s filename=%s extractor=%s error=%s",
+            task.id,
+            attachment.id,
+            filename,
+            mime_type,
+            message,
+        )
         _mark_attachment_failed(attachment, db, message)
         raise AttachmentProcessingError(message)
 

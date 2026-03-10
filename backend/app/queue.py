@@ -26,4 +26,5 @@ def dequeue_task(timeout_seconds: int = 5) -> str | None:
     if item is None:
         return None
     _, task_id = item
+    logger.info("event=task_dequeued task_id=%s queue=%s", task_id, TASK_QUEUE_NAME)
     return task_id

@@ -25,12 +25,32 @@ def configure_logging() -> None:
     )
 
 
+def _executor_details(executor: TaskExecutor) -> tuple[str, str | None]:
+    provider = getattr(executor, "config", None)
+    if provider is not None:
+        return (
+            str(getattr(provider, "provider", executor.__class__.__name__.lower())),
+            getattr(provider, "model", None),
+        )
+    executor_name = executor.__class__.__name__.removesuffix("Executor").lower()
+    return executor_name, None
+
+
+def _log_task_final(task: Task) -> None:
+    logger.info(
+        "event=task_finalized task_id=%s final_status=%s delivery_status=%s",
+        task.id,
+        task.status,
+        task.delivery_status or "none",
+    )
+
+
 def _deliver_task_result(task: Task, db: Session) -> None:
     if task.telegram_chat_id is None:
-        logger.info("telegram delivery skipped: no telegram_chat_id", extra={"task_id": task.id})
+        logger.info("event=telegram_delivery_skipped task_id=%s reason=no_telegram_chat_id", task.id)
         return
     if task.delivery_status == "delivered":
-        logger.info("telegram delivery skipped: already delivered", extra={"task_id": task.id})
+        logger.info("event=telegram_delivery_skipped task_id=%s reason=already_delivered", task.id)
         return
     if task.delivery_status is None:
         task.delivery_status = "pending"
@@ -44,7 +64,7 @@ def _deliver_task_result(task: Task, db: Session) -> None:
         task.delivery_error = f"telegram delivery exception: {exc}"[:1000]
         db.commit()
         db.refresh(task)
-        logger.exception("telegram delivery raised exception", extra={"task_id": task.id})
+        logger.exception("event=telegram_delivery_failed task_id=%s delivery_status=failed error=%s", task.id, exc)
         return
 
     if outcome.success:
@@ -53,42 +73,39 @@ def _deliver_task_result(task: Task, db: Session) -> None:
         task.delivery_error = None
         db.commit()
         db.refresh(task)
-        logger.info(
-            "telegram delivery succeeded",
-            extra={"task_id": task.id, "delivery_status": task.delivery_status, "chat_id": task.telegram_chat_id},
-        )
+        logger.info("event=telegram_delivery_completed task_id=%s telegram_chat_id=%s delivery_status=%s", task.id, task.telegram_chat_id, task.delivery_status)
         return
 
     task.delivery_status = "failed"
     task.delivery_error = (outcome.error_text or "telegram delivery failed")[:1000]
     db.commit()
     db.refresh(task)
-    logger.error(
-        "telegram delivery failed",
-        extra={"task_id": task.id, "delivery_status": task.delivery_status, "delivery_error": task.delivery_error},
-    )
+    logger.error("event=telegram_delivery_failed task_id=%s telegram_chat_id=%s delivery_status=%s error=%s", task.id, task.telegram_chat_id, task.delivery_status, task.delivery_error)
 
 
 def process_task(task_id: str, executor: TaskExecutor) -> None:
     db = SessionLocal()
+    provider, model = _executor_details(executor)
     try:
         task = db.get(Task, task_id)
         if task is None:
-            logger.warning("task not found in PostgreSQL", extra={"task_id": task_id})
+            logger.warning("event=task_missing task_id=%s", task_id)
             return
 
         if task.status != "queued":
             if task.status == "created":
-                logger.info("task not ready yet, requeue", extra={"task_id": task_id, "status": task.status})
+                logger.info("event=task_requeued task_id=%s status=%s reason=created_not_ready", task_id, task.status)
                 enqueue_task(task_id)
                 return
-            logger.info(
-                "task skipped due to non-queued status",
-                extra={"task_id": task_id, "status": task.status},
-            )
+            logger.info("event=task_skipped task_id=%s status=%s reason=non_queued", task_id, task.status)
             return
 
-        logger.info("processing started", extra={"task_id": task_id})
+        logger.info(
+            "event=worker_task_started task_id=%s executor=%s model=%s",
+            task_id,
+            provider,
+            model or "none",
+        )
         task.status = "processing"
         task.error_text = None
         db.commit()
@@ -102,13 +119,20 @@ def process_task(task_id: str, executor: TaskExecutor) -> None:
             task.error_text = str(exc)
             db.commit()
             db.refresh(task)
-            logger.error("attachment preparation failed", extra={"task_id": task_id, "error": str(exc)})
+            logger.error("event=attachment_preparation_failed task_id=%s error=%s", task_id, str(exc))
             _deliver_task_result(task, db)
+            _log_task_final(task)
             return
 
         execution_task = SimpleNamespace(
             id=task.id,
             input_text=execution_input,
+        )
+        logger.info(
+            "event=ai_execution_started task_id=%s provider=%s model=%s",
+            task_id,
+            provider,
+            model or "none",
         )
         execution = executor.execute(execution_task)
 
@@ -116,21 +140,35 @@ def process_task(task_id: str, executor: TaskExecutor) -> None:
             task.status = "done"
             task.result_text = execution.result_text
             task.error_text = None
+            logger.info(
+                "event=ai_execution_completed task_id=%s provider=%s model=%s final_status=%s",
+                task_id,
+                provider,
+                model or "none",
+                task.status,
+            )
         else:
             task.status = "failed"
             task.result_text = None
             task.error_text = execution.error_text or "executor reported unsuccessful processing"
+            logger.error(
+                "event=ai_execution_failed task_id=%s provider=%s model=%s error=%s",
+                task_id,
+                provider,
+                model or "none",
+                task.error_text,
+            )
         db.commit()
         db.refresh(task)
         if task.status == "done":
-            logger.info("processing completed", extra={"task_id": task_id, "status": task.status})
             _deliver_task_result(task, db)
+            _log_task_final(task)
         else:
-            logger.error("processing failed", extra={"task_id": task_id, "status": task.status})
             _deliver_task_result(task, db)
+            _log_task_final(task)
     except Exception as exc:
         db.rollback()
-        logger.exception("processing failed", extra={"task_id": task_id})
+        logger.exception("event=worker_task_failed task_id=%s error=%s", task_id, exc)
         try:
             task = db.get(Task, task_id)
             if task is not None:
@@ -139,10 +177,10 @@ def process_task(task_id: str, executor: TaskExecutor) -> None:
                 task.error_text = str(exc)
                 db.commit()
                 db.refresh(task)
-                logger.info("task marked as failed", extra={"task_id": task_id})
+                _log_task_final(task)
         except Exception:
             db.rollback()
-            logger.exception("failed to persist failed status", extra={"task_id": task_id})
+            logger.exception("event=task_failed_persist_error task_id=%s", task_id)
     finally:
         db.close()
 
@@ -151,19 +189,25 @@ def run_worker(max_tasks: int = 0, poll_timeout_seconds: int = 5) -> None:
     Base.metadata.create_all(bind=engine)
     ensure_task_optional_columns(engine)
     executor = build_executor()
+    provider, model = _executor_details(executor)
     processed_count = 0
-    logger.info("worker started")
+    logger.info(
+        "event=worker_started executor=%s model=%s poll_timeout_seconds=%s max_tasks=%s",
+        provider,
+        model or "none",
+        poll_timeout_seconds,
+        max_tasks,
+    )
     while True:
         task_id = dequeue_task(timeout_seconds=poll_timeout_seconds)
         if task_id is None:
             continue
 
-        logger.info("task picked", extra={"task_id": task_id})
         process_task(task_id, executor)
         processed_count += 1
 
         if max_tasks > 0 and processed_count >= max_tasks:
-            logger.info("worker exiting after max_tasks", extra={"processed_count": processed_count})
+            logger.info("event=worker_stopped processed_count=%s reason=max_tasks", processed_count)
             return
 
 

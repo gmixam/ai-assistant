@@ -145,3 +145,30 @@ cd infra && docker compose ps
 ```bash
 make smoke
 ```
+
+## Diagnose one task end-to-end
+For one task id, the fastest normal-operation inspection path is grep by `task_id=` in worker logs:
+
+```bash
+TASK_ID=<task_id>
+docker compose -f infra/docker-compose.yml logs --tail=200 worker | grep "task_id=$TASK_ID"
+```
+
+Useful event names:
+- `event=task_dequeued`
+- `event=worker_task_started`
+- `event=attachment_download_started`
+- `event=attachment_download_completed`
+- `event=text_extraction_started`
+- `event=text_extraction_completed`
+- `event=ai_execution_started`
+- `event=ai_execution_completed`
+- `event=telegram_delivery_started`
+- `event=telegram_delivery_completed`
+- `event=task_finalized`
+
+If the task fails, inspect:
+- `event=attachment_download_failed`
+- `event=text_extraction_failed`
+- `event=ai_execution_failed`
+- `event=telegram_delivery_failed`
