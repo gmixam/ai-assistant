@@ -40,6 +40,35 @@ class TaskCreateRequest(BaseModel):
     reply_to_message_id: Optional[int] = None
 
 
+class ApprovalCreateRequest(BaseModel):
+    summary: str
+    proposed_action: Optional[str] = None
+    structured_result: dict | None = None
+    handoff: Optional[str] = None
+    expires_at: Optional[datetime] = None
+
+
+class ApprovalDecisionRequest(BaseModel):
+    decided_by: Optional[str] = None
+    comment: Optional[str] = None
+
+
+class ApprovalItemResponse(BaseModel):
+    id: int
+    task_id: str
+    status: str
+    summary: str
+    proposed_action: Optional[str] = None
+    structured_result: Optional[str] = None
+    handoff: Optional[str] = None
+    decision_comment: Optional[str] = None
+    decided_by: Optional[str] = None
+    decided_at: Optional[datetime] = None
+    expires_at: Optional[datetime] = None
+    created_at: datetime
+    updated_at: datetime
+
+
 class TaskCreateResponse(BaseModel):
     id: str
     task_id: str
@@ -54,6 +83,7 @@ class TaskCreateResponse(BaseModel):
     delivered_at: Optional[datetime] = None
     delivery_error: Optional[str] = None
     attachments: list[TaskAttachmentResponse] = Field(default_factory=list)
+    approvals: list[ApprovalItemResponse] = Field(default_factory=list)
     created_at: datetime
     updated_at: datetime
 
@@ -72,5 +102,6 @@ class TaskResponse(BaseModel):
     delivered_at: Optional[datetime] = None
     delivery_error: Optional[str] = None
     attachments: list[TaskAttachmentResponse] = Field(default_factory=list)
+    approvals: list[ApprovalItemResponse] = Field(default_factory=list)
     created_at: datetime
     updated_at: datetime

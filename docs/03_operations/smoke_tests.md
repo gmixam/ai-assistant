@@ -209,3 +209,15 @@ If the task fails, inspect:
 - `event=text_extraction_failed`
 - `event=ai_execution_failed`
 - `event=telegram_delivery_failed`
+
+## Approval API quick check
+Approval endpoints:
+- `POST /tasks/{id}/approvals`
+- `POST /approvals/{id}/approve`
+- `POST /approvals/{id}/reject`
+- `GET /tasks/{id}/approvals`
+
+Expected behavior:
+- approval item is created with status `pending`
+- approval can transition to `approved` or `rejected`
+- `GET /tasks/{id}` and `GET /tasks/{id}/approvals` show the current approval state and decision comment

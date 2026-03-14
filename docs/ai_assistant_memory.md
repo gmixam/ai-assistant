@@ -13,6 +13,7 @@ Build a reliable AI Assistant platform that starts from practical Telegram-first
 - AI analysis execution
 - Telegram result delivery
 - smoke checks for normal mode and debug mode
+- approval items as first-class platform entities
 
 The core MVP document analysis flow has been confirmed by the user through Telegram:
 
@@ -37,6 +38,7 @@ Operational details:
 - debug/fallback mode: manual worker inside `ai_backend` for diagnostics only
 - `ai_backend` and `ai_worker` share `/storage`
 - task-level observability logs exist in queue, worker, attachment, execution, and delivery stages
+- approval items are stored in PostgreSQL and managed through backend API
 
 Long-term target direction:
 - specialized agents
@@ -90,6 +92,7 @@ Long-term target direction:
 - separated smoke modes for normal/debug operation
 - MVP document analysis pipeline confirmed through Telegram
 - Document Analysis Agent validated as the first production-tested agent
+- approval item entity and approval API foundation added for future workflows
 
 ## Current main documents
 - `docs/README.md`

@@ -6,7 +6,8 @@ import urllib.parse
 import urllib.request
 from dataclasses import dataclass
 
-from .models import Task
+from .approval_service import ApprovalService
+from .models import ApprovalItem, Task
 
 logger = logging.getLogger("telegram_delivery")
 
@@ -22,6 +23,13 @@ def _build_task_message(task: Task) -> str:
     else:
         body = task.error_text or "Unknown execution error."
         text = f"Task {task.id} failed.\n\n{body}"
+    if len(text) > 3900:
+        return text[:3900] + "\n\n...truncated"
+    return text
+
+
+def build_approval_message(item: ApprovalItem) -> str:
+    text = ApprovalService.format_for_telegram(item)
     if len(text) > 3900:
         return text[:3900] + "\n\n...truncated"
     return text

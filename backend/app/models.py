@@ -52,3 +52,28 @@ class TaskAttachment(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc)
     )
+
+
+class ApprovalItem(Base):
+    __tablename__ = "approval_items"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    task_id: Mapped[str] = mapped_column(String(36), ForeignKey("tasks.id"), nullable=False, index=True)
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="pending")
+    summary: Mapped[str] = mapped_column(String, nullable=False)
+    proposed_action: Mapped[str | None] = mapped_column(String, nullable=True)
+    structured_result: Mapped[str | None] = mapped_column(String, nullable=True)
+    handoff: Mapped[str | None] = mapped_column(String, nullable=True)
+    decision_comment: Mapped[str | None] = mapped_column(String, nullable=True)
+    decided_by: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc)
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+    )

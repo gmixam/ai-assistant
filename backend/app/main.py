@@ -4,15 +4,23 @@ from uuid import uuid4
 from fastapi import Depends, FastAPI, HTTPException
 from sqlalchemy.orm import Session
 
+from .approval_service import ApprovalCreateData, ApprovalService
 from .database import Base, SessionLocal, engine
-from .models import Task, TaskAttachment
+from .models import ApprovalItem, Task, TaskAttachment
 from .queue import enqueue_task
 from .schema import ensure_task_optional_columns
-from .tasks import TaskCreateRequest, TaskCreateResponse, TaskResponse
+from .tasks import (
+    ApprovalCreateRequest,
+    ApprovalDecisionRequest,
+    TaskCreateRequest,
+    TaskCreateResponse,
+    TaskResponse,
+)
 
 
 app = FastAPI(title="AI Assistant Backend")
 logger = logging.getLogger(__name__)
+approval_service = ApprovalService()
 
 
 @app.on_event("startup")
@@ -33,6 +41,28 @@ def get_db():
 @app.get("/health")
 def health():
     return {"status": "ok"}
+
+
+def _serialize_approval(item: ApprovalItem) -> dict:
+    return {
+        "id": item.id,
+        "task_id": item.task_id,
+        "status": item.status,
+        "summary": item.summary,
+        "proposed_action": item.proposed_action,
+        "structured_result": item.structured_result,
+        "handoff": item.handoff,
+        "decision_comment": item.decision_comment,
+        "decided_by": item.decided_by,
+        "decided_at": item.decided_at,
+        "expires_at": item.expires_at,
+        "created_at": item.created_at,
+        "updated_at": item.updated_at,
+    }
+
+
+def _load_approvals(task_id: str, db: Session) -> list[ApprovalItem]:
+    return approval_service.list_for_task(task_id, db)
 
 
 @app.post("/tasks", response_model=TaskCreateResponse)
@@ -81,6 +111,7 @@ def create_task(task: TaskCreateRequest, db: Session = Depends(get_db)):
     db.commit()
     db.refresh(db_task)
     attachments = db.query(TaskAttachment).filter(TaskAttachment.task_id == db_task.id).order_by(TaskAttachment.id).all()
+    approvals = _load_approvals(db_task.id, db)
 
     return {
         "id": db_task.id,
@@ -115,6 +146,7 @@ def create_task(task: TaskCreateRequest, db: Session = Depends(get_db)):
             }
             for attachment in attachments
         ],
+        "approvals": [_serialize_approval(item) for item in approvals],
         "created_at": db_task.created_at,
         "updated_at": db_task.updated_at,
     }
@@ -126,6 +158,7 @@ def get_task(task_id: str, db: Session = Depends(get_db)):
     if task is None:
         raise HTTPException(status_code=404, detail="Task not found")
     attachments = db.query(TaskAttachment).filter(TaskAttachment.task_id == task.id).order_by(TaskAttachment.id).all()
+    approvals = _load_approvals(task.id, db)
     return {
         "id": task.id,
         "input_text": task.input_text,
@@ -159,6 +192,59 @@ def get_task(task_id: str, db: Session = Depends(get_db)):
             }
             for attachment in attachments
         ],
+        "approvals": [_serialize_approval(item) for item in approvals],
         "created_at": task.created_at,
         "updated_at": task.updated_at,
     }
+
+
+@app.post("/tasks/{task_id}/approvals")
+def create_approval(task_id: str, payload: ApprovalCreateRequest, db: Session = Depends(get_db)):
+    task = db.get(Task, task_id)
+    if task is None:
+        raise HTTPException(status_code=404, detail="Task not found")
+    item = approval_service.create_item(
+        task,
+        ApprovalCreateData(
+            summary=payload.summary,
+            proposed_action=payload.proposed_action,
+            structured_result=payload.structured_result,
+            handoff=payload.handoff,
+            expires_at=payload.expires_at,
+        ),
+        db,
+    )
+    logger.info("event=approval_created task_id=%s approval_id=%s status=%s", task.id, item.id, item.status)
+    return _serialize_approval(item)
+
+
+@app.get("/tasks/{task_id}/approvals")
+def get_task_approvals(task_id: str, db: Session = Depends(get_db)):
+    task = db.get(Task, task_id)
+    if task is None:
+        raise HTTPException(status_code=404, detail="Task not found")
+    items = _load_approvals(task_id, db)
+    return {
+        "task_id": task_id,
+        "approvals": [_serialize_approval(item) for item in items],
+    }
+
+
+@app.post("/approvals/{approval_id}/approve")
+def approve_item(approval_id: int, payload: ApprovalDecisionRequest, db: Session = Depends(get_db)):
+    try:
+        item = approval_service.approve(approval_id, db, decided_by=payload.decided_by, comment=payload.comment)
+    except LookupError:
+        raise HTTPException(status_code=404, detail="Approval item not found")
+    logger.info("event=approval_transition task_id=%s approval_id=%s status=%s", item.task_id, item.id, item.status)
+    return _serialize_approval(item)
+
+
+@app.post("/approvals/{approval_id}/reject")
+def reject_item(approval_id: int, payload: ApprovalDecisionRequest, db: Session = Depends(get_db)):
+    try:
+        item = approval_service.reject(approval_id, db, decided_by=payload.decided_by, comment=payload.comment)
+    except LookupError:
+        raise HTTPException(status_code=404, detail="Approval item not found")
+    logger.info("event=approval_transition task_id=%s approval_id=%s status=%s", item.task_id, item.id, item.status)
+    return _serialize_approval(item)
