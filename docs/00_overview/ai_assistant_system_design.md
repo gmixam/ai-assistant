@@ -2,7 +2,7 @@
 
 ## Purpose
 
-This document describes the target system design of **AI Assistant Platform** as it evolves from an MVP task intake system into a **multi-agent AI execution platform**.
+This document describes the target system design of **AI Assistant Platform** as it evolves from an MVP task intake system into a **platform of specialized agents and agent teams**.
 
 It complements the project context documents and the architecture overview.
 
@@ -16,7 +16,8 @@ The system is designed to:
 - orchestrate task execution through backend services
 - process tasks asynchronously
 - support multiple AI workers and AI providers
-- evolve into a supervisor-driven multi-agent architecture
+- support specialized agents and agent teams
+- evolve into an orchestration-driven, approval-aware architecture
 - remain simple enough for MVP delivery, but scalable enough for future SaaS expansion
 
 ---
@@ -45,6 +46,8 @@ Task created
 
 This is the first working integration milestone and serves as the base for the execution layer.
 
+The current `Document Analysis Agent` is the first production-tested agent on top of this platform direction.
+
 ---
 
 ## 3. Target Execution Model
@@ -62,7 +65,7 @@ Task Queue
 ↓
 Task Execution
 ↓
-AI Orchestration
+Task Routing / Orchestration
 ↓
 Result Storage
 ↓
@@ -75,7 +78,7 @@ This separation ensures:
 - asynchronous execution
 - scalability of workers
 - flexibility in AI orchestration
-- future compatibility with multi-agent routing
+- future compatibility with agent teams and approval workflows
 
 ---
 
@@ -231,10 +234,29 @@ It will initially begin as:
 
 Later it evolves into:
 
-- supervisor-based routing
+- orchestration-based routing
 - multiple specialized agents
+- agent teams
 - tool-aware execution
+- approval-oriented workflows
 - agent collaboration
+
+### Core platform entities
+
+- `Agent`
+  A specialized execution unit with a defined role and result contract.
+- `Agent Capability`
+  A concrete capability exposed by an agent.
+- `Agent Team`
+  A coordinated execution group for one business scenario.
+- `Task`
+  A unit of work routed into the platform.
+- `Task Routing`
+  The selection and dispatch logic for agents and agent teams.
+- `Agent Result Contract`
+  A normalized result format that supports safe handoffs.
+- `Approval Step`
+  A checkpoint that requires human or policy approval before continuation.
 
 ---
 
@@ -274,28 +296,33 @@ Result returned to user
 8. Worker stores result
 9. Bot or backend later returns result/status to user
 
-This is the first real **task execution system** milestone.
+This is the first real **task execution system** milestone and the first validated agent runtime path.
+
+Current validated agent:
+- Document Analysis Agent
 
 ---
 
 ## 6. Planned Multi-Agent Design
 
-The long-term design introduces a **Supervisor Agent** that coordinates specialized agents.
+The long-term design introduces an **orchestration layer** that coordinates specialized agents, agent teams, and approval steps.
 
 ### High-level model
 
 ```text
-Supervisor Agent
+Orchestration Layer
 ↓
+├── Document Analysis Agent
 ├── Analyst Agent
 ├── Research Agent
 ├── Writer Agent
-└── Tool Agent
+├── Tool Agent
+└── Approval Step
 ```
 
 ---
 
-## 6.1 Supervisor Agent
+## 6.1 Orchestration Layer
 
 Role:
 
@@ -307,10 +334,12 @@ Responsibilities:
 - determine execution strategy
 - split work into subtasks
 - assign subtasks to specialized agents
+- route work into agent teams when needed
 - combine and validate results
 - manage retries or fallback flows
+- control approval-oriented transitions
 
-The supervisor is not intended to do all work itself.  
+The orchestration layer is not intended to do all work itself.  
 Its purpose is routing, coordination and quality control.
 
 ---
@@ -410,20 +439,22 @@ This matches the documented transition from infrastructure to task system work. 
 
 ## Stage 2 — Task Execution System
 
-Next step:
+Completed foundation:
 
 - persist tasks in PostgreSQL
 - enqueue tasks in Redis
 - add worker service
 - process task lifecycle statuses
+- Telegram delivery from worker
+- attachment download and extraction
 
-This is the immediate execution milestone.
+This stage is materially in place and powers the first validated agent.
 
 ---
 
 ## Stage 3 — AI Execution
 
-Next capability layer:
+Current capability layer:
 
 - connect one or more LLM providers
 - generate structured results
@@ -438,15 +469,21 @@ Initial providers considered in project context:
 
 ---
 
-## Stage 4 — Multi-Agent System
+## Stage 4 — Agent Platform Foundation
 
 Advanced architecture:
 
-- supervisor agent
+- orchestration layer
 - specialized role agents
+- agent teams
 - multi-step orchestration
+- approval-oriented workflows
 - agent collaboration
 - tool usage
+
+Likely next business scenario:
+
+- email-driven multi-agent workflow
 
 ---
 

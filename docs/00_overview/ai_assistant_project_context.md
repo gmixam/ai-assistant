@@ -2,12 +2,17 @@
 
 ## Purpose
 
-This project builds a **Telegram-based AI assistant** that can accept
-text tasks and documents, analyze them using LLMs, and return results
-back to the user in Telegram.
+This project builds an **AI Assistant platform** that starts with
+practical user-testable workflows and evolves into a platform of
+specialized agents and agent teams.
 
-Primary MVP use case: \> Upload a client document → AI analyzes it →
-returns a concise summary of problems.
+The current validated business scenario is:
+
+> Upload a client document → AI analyzes it → returns a concise summary
+> of problems.
+
+The current `Document Analysis Agent` is the first production-tested
+agent, not the final form of the system.
 
 ------------------------------------------------------------------------
 
@@ -28,10 +33,18 @@ returns a concise summary of problems.
              Worker
                 │
                 ▼
-             LLM (OpenAI)
+          Agent Execution
                 │
                 ▼
          Telegram delivery
+
+Normal runtime mode:
+
+    ai_worker (compose service)
+
+Debug/fallback mode:
+
+    manual worker inside ai_backend for diagnostics only
 
 ------------------------------------------------------------------------
 
@@ -95,116 +108,89 @@ Task lifecycle:
 
 Worker steps: 1. read task_id from Redis 2. load task from PostgreSQL 3.
 download attachments (Telegram) 4. extract text from files 5. compose
-execution input 6. send request to LLM 7. deliver result to Telegram
+execution input 6. send request to agent executor 7. deliver result to
+Telegram
 
 ------------------------------------------------------------------------
 
-## Executor Layer
+## Current MVP Scope
 
-Interface:
+The current MVP includes:
 
-    TaskExecutor.execute(task) → ExecutionResult
+- Telegram task intake
+- document upload from Telegram
+- attachment download and text extraction
+- task persistence in PostgreSQL
+- Redis queue handoff
+- dedicated `ai_worker` runtime
+- AI execution through provider-aware executor layer
+- Telegram result delivery
+- task-level observability logs
+- separated smoke flows for normal mode and debug mode
 
-ExecutionResult:
+Confirmed by the user through Telegram:
 
-    success: bool
-    result_text: str | None
-    error_text: str | None
-
-Executors available:
-
-    mock
-    openai
-    deepseek (stub)
-    kimi (stub)
-
-Selected via environment variable:
-
-    TASK_EXECUTOR=openai
+    Telegram document → attachment download → text extraction
+    → AI analysis → Telegram reply
 
 ------------------------------------------------------------------------
 
-## Attachment Processing
+## Target Platform Model
 
-Worker pipeline:
+The long-term target is not a single-use assistant, but a platform with:
 
-1.  Receive `telegram_file_id`
-2.  Call Telegram API `getFile`
-3.  Download file
-4.  Save locally:
+- specialized agents
+- agent teams
+- orchestration layer
+- approval-oriented workflows
 
-```{=html}
-<!-- -->
-```
-    storage/input/<task_id>/<attachment_id>_<filename>
-
-5.  Extract text
-
-Supported formats:
-
-    txt
-    pdf
-    docx
-
-Extraction libraries:
-
-    txt   → UTF‑8 decode
-    pdf   → pypdf
-    docx  → python-docx
+The current `Document Analysis Agent` is the first validated example of
+this model.
 
 ------------------------------------------------------------------------
 
-## Input Size Protection
+## Core Platform Entities
 
-Limits applied before sending data to LLM:
+### Agent
 
-    EXECUTION_INPUT_MAX_CHARS = 120000
-    ATTACHMENT_TEXT_MAX_CHARS = 50000
-    INSTRUCTION_TEXT_MAX_CHARS = 8000
+A specialized execution unit with a defined role, execution boundaries,
+and expected result contract.
 
-Diagnostic fields:
+### Agent Capability
 
-    extracted_text_length
-    sent_text_length
-    was_truncated
+A concrete capability exposed by an agent, such as document analysis,
+fact-checking, drafting, routing, or tool invocation.
 
-------------------------------------------------------------------------
+### Agent Team
 
-## Telegram Result Delivery
+A coordinated set of agents that handles one business scenario through
+routing and handoff rules.
 
-Worker sends final result via:
+### Task
 
-    Telegram Bot API → sendMessage
+A work item submitted by a user or another system and tracked through
+execution lifecycle.
 
-Delivery fields stored in tasks:
+### Task Routing
 
-    delivery_status
-    delivered_at
-    delivery_error
+The decision layer that selects the correct agent or agent team for a
+given task.
 
-Statuses:
+### Agent Result Contract
 
-    pending
-    delivered
-    failed
+A normalized result shape that allows safe handoff between agents and
+system layers.
 
-------------------------------------------------------------------------
+### Approval Step
 
-## Smoke Tests
-
-Available project checks:
-
-    make smoke
-    make smoke-worker
-    make smoke-task-attachment
-    make smoke-attachment-extract-local
-    make smoke-telegram-delivery
+A controlled checkpoint where a human or policy gate approves, edits, or
+rejects work before continuation.
 
 ------------------------------------------------------------------------
 
 ## Current Status
 
-The **end‑to‑end pipeline works**:
+The current end-to-end pipeline works:
 
     Telegram → Bot → Backend → Redis → Worker → OpenAI → Telegram reply
 
@@ -212,45 +198,25 @@ Working features: - text task processing - document upload - attachment
 extraction pipeline - OpenAI integration - Telegram result delivery -
 smoke tests
 
-------------------------------------------------------------------------
+Current positioning:
 
-## Current Known Issue
-
-When processing documents the worker fails to download attachments.
-
-Example error:
-
-    attachment download is unavailable:
-    TELEGRAM_BOT_TOKEN is missing
-
-This occurs during:
-
-    Worker → Telegram API getFile
+- Document Analysis Agent is the first production-tested agent
+- current Telegram flow is the first validated agent workflow
+- the system is now ready to evolve into agent registry, contracts, and
+  agent-team architecture
 
 ------------------------------------------------------------------------
 
-## Root Cause
+## Next Engineering Priorities
 
-Worker is currently started manually:
-
-    docker exec python -m app.worker_runtime
-
-Environment variable
-
-    TELEGRAM_BOT_TOKEN
-
-is not always passed into the worker process.
-
-Therefore worker cannot download Telegram attachments.
-
-------------------------------------------------------------------------
-
-## Next Engineering Tasks
-
-1.  Ensure worker receives required environment variables.
-2.  Stabilize worker runtime.
-3.  Move worker into `docker-compose` service.
-4.  Maintain compatibility with current MVP flow.
+1.  Build architecture foundations for specialized agents and agent
+    teams.
+2.  Define routing, result contract, and approval-oriented workflow
+    primitives.
+3.  Keep the current Document Analysis Agent stable as the first
+    validated agent.
+4.  Explore email-driven multi-agent workflow as a likely next business
+    scenario.
 
 ------------------------------------------------------------------------
 
@@ -258,7 +224,8 @@ Therefore worker cannot download Telegram attachments.
 
 System readiness:
 
-    ≈ 95% complete
-
-Remaining work focuses on **worker runtime reliability** and
-**environment configuration**.
+- core Telegram document analysis agent is production-tested
+- normal runtime mode is compose-based
+- debug/fallback mode remains available for diagnostics
+- current MVP pipeline should remain stable while platform abstractions
+  are introduced in future stages

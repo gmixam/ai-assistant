@@ -1,7 +1,7 @@
 # AI Assistant Memory
 
 ## Project mission
-Build a reliable Telegram-first AI Assistant platform that accepts user tasks, executes them through a controlled worker pipeline, and returns useful results back to Telegram.
+Build a reliable AI Assistant platform that starts from practical Telegram-first workflows, validates specialized agents in real use, and evolves into a platform of agents and agent teams.
 
 ## Current MVP scope
 - Telegram task intake through bot
@@ -17,6 +17,8 @@ Build a reliable Telegram-first AI Assistant platform that accepts user tasks, e
 The core MVP document analysis flow has been confirmed by the user through Telegram:
 
 `Telegram document -> attachment download -> text extraction -> AI analysis -> Telegram reply`
+
+The current `Document Analysis Agent` is the first production-tested agent, not the final form of the system.
 
 ## Current architecture
 Primary flow:
@@ -35,6 +37,28 @@ Operational details:
 - debug/fallback mode: manual worker inside `ai_backend` for diagnostics only
 - `ai_backend` and `ai_worker` share `/storage`
 - task-level observability logs exist in queue, worker, attachment, execution, and delivery stages
+
+Long-term target direction:
+- specialized agents
+- agent teams
+- orchestration layer
+- approval-oriented workflows
+
+## Platform entities
+- `Agent`
+  A specialized execution unit with a defined role, inputs, outputs, and operational constraints.
+- `Agent Capability`
+  A concrete thing an agent can do, such as document analysis, routing, drafting, fact-checking, or delivery preparation.
+- `Agent Team`
+  A coordinated set of agents that work on one business scenario through routing and handoff rules.
+- `Task`
+  A user or system work item that moves through intake, routing, execution, approval, and delivery.
+- `Task Routing`
+  The decision layer that selects the right agent or agent team for a given task.
+- `Agent Result Contract`
+  A normalized result shape that lets agents hand work off safely and predictably.
+- `Approval Step`
+  A controlled checkpoint where a human or policy gate approves, edits, or rejects a result before the next step.
 
 ## Operational truth
 - repo documentation is the source of truth
@@ -65,6 +89,7 @@ Operational details:
 - task-level observability logs
 - separated smoke modes for normal/debug operation
 - MVP document analysis pipeline confirmed through Telegram
+- Document Analysis Agent validated as the first production-tested agent
 
 ## Current main documents
 - `docs/README.md`
@@ -77,16 +102,18 @@ Operational details:
 - `docs/03_operations/smoke_tests.md`
 
 ## Next priorities
-- improve operator-facing observability without changing architecture
-- keep smoke flows reproducible in compose-based operation
-- strengthen worker readiness and diagnostics
-- prepare the next stage of execution reliability and future architecture evolution
+- strengthen architecture foundations for specialized agents and agent teams
+- define platform-level contracts for routing, results, and approvals
+- explore email-driven multi-agent workflow as a likely next business scenario
+- keep operator-facing observability and smoke flows practical for the current MVP
 
 ## Rules for Codex
 - treat repo docs as the primary context
 - prefer `docs/ai_assistant_memory.md` as the first-stop working summary
 - use `ai_worker` as the default worker assumption
 - treat manual worker launch inside `ai_backend` as debug/fallback only
+- treat the Document Analysis Agent as the first validated agent, not the whole product vision
+- align new design decisions with specialized agents, agent teams, orchestration, and approval workflows
 - preserve current MVP behavior unless the task explicitly asks for change
 - keep docs updated when operational behavior changes
 - do not treat old versioned context files as source of truth
