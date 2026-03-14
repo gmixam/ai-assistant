@@ -69,3 +69,10 @@ class AgentOutputContract:
     result_text: str | None = None
     error_text: str | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class RouteResolution:
+    task_type: str
+    agent: AgentDefinition
+    team: AgentTeamDefinition | None

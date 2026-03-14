@@ -29,6 +29,8 @@ Recommended mode-specific entry points:
   stops `ai_worker` first and runs isolated queue/persistence smoke
 - `make smoke-worker-debug`:
   stops `ai_worker` first and runs isolated one-shot worker smoke
+- `make smoke-contract`:
+  brings backend + worker up and validates contract-based document execution, registry resolution, approval creation, and team skeleton wiring
 
 For final normal-operation readiness, the manual Telegram document E2E remains the decisive check because it validates:
 - real Telegram file intake
@@ -113,6 +115,18 @@ Task attachment metadata persistence smoke:
 make smoke-task-attachment
 ```
 
+Contract-based execution smoke:
+```bash
+make smoke-contract
+```
+Validates:
+- current Document Analysis Agent runs through the contract/routing shell
+- registry and entrypoint resolution work
+- input contract build is logged
+- output contract normalization is logged
+- approval item creation works
+- email team skeleton is registered with explicit handoff steps
+
 Local attachment text extraction smoke:
 ```bash
 make smoke-attachment-extract-local
@@ -194,6 +208,9 @@ docker compose -f infra/docker-compose.yml logs --tail=200 worker | grep "task_i
 Useful event names:
 - `event=task_dequeued`
 - `event=worker_task_started`
+- `event=agent_route_resolved`
+- `event=agent_input_built`
+- `event=agent_output_normalized`
 - `event=attachment_download_started`
 - `event=attachment_download_completed`
 - `event=text_extraction_started`
@@ -209,6 +226,12 @@ If the task fails, inspect:
 - `event=text_extraction_failed`
 - `event=ai_execution_failed`
 - `event=telegram_delivery_failed`
+
+Failure categories to look for in worker logs:
+- `failure_category=attachment_failure`
+- `failure_category=extraction_failure`
+- `failure_category=agent_execution_failure`
+- `failure_category=approval_preparation_failure`
 
 ## Approval API quick check
 Approval endpoints:

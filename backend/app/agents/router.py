@@ -1,5 +1,4 @@
 import logging
-from dataclasses import asdict
 from types import SimpleNamespace
 from typing import Protocol
 
@@ -8,7 +7,7 @@ from sqlalchemy.orm import Session
 from ..attachment_pipeline import prepare_task_execution_input
 from ..executors.base import ExecutionResult, TaskExecutor
 from ..models import Task, TaskAttachment
-from .models import AgentDefinition, AgentInputContract, AgentOutputContract
+from .models import AgentDefinition, AgentInputContract, AgentOutputContract, RouteResolution
 from .registry import AgentRegistry
 
 logger = logging.getLogger("execution_router")
@@ -55,10 +54,10 @@ class ExecutionRouter:
         }
 
     def route(self, task: Task, db: Session, executor: TaskExecutor) -> AgentOutputContract:
-        task_type = self._resolve_task_type(task, db)
-        agent_id = self._registry.resolve_entrypoint(task_type)
-        agent = self._registry.get_agent(agent_id)
-        team_id = agent.team_id
+        resolution = self.resolve(task, db)
+        task_type = resolution.task_type
+        agent = resolution.agent
+        team_id = resolution.team.team_id if resolution.team is not None else agent.team_id
 
         logger.info(
             "event=agent_route_resolved task_id=%s task_type=%s agent_id=%s team_id=%s",
@@ -135,6 +134,13 @@ class ExecutionRouter:
             agent.output_contract.contract_id,
         )
         return output
+
+    def resolve(self, task: Task, db: Session) -> RouteResolution:
+        task_type = self._resolve_task_type(task, db)
+        agent_id = self._registry.resolve_entrypoint(task_type)
+        agent = self._registry.get_agent(agent_id)
+        team = self._registry.get_team(agent.team_id) if agent.team_id else None
+        return RouteResolution(task_type=task_type, agent=agent, team=team)
 
     def _build_input_contract(self, task: Task, db: Session, task_type: str, agent: AgentDefinition) -> AgentInputContract:
         execution_input = prepare_task_execution_input(task, db)

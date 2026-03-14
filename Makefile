@@ -1,4 +1,4 @@
-.PHONY: up ps worker-up worker-stop debug-worker smoke smoke-normal smoke-worker smoke-worker-debug smoke-worker-openai smoke-worker-openai-no-key smoke-telegram-metadata smoke-task-attachment smoke-attachment-extract-local smoke-telegram-delivery
+.PHONY: up ps worker-up worker-stop debug-worker smoke smoke-normal smoke-worker smoke-worker-debug smoke-worker-openai smoke-worker-openai-no-key smoke-telegram-metadata smoke-task-attachment smoke-attachment-extract-local smoke-telegram-delivery smoke-contract
 
 up:
 	docker compose -f infra/docker-compose.yml up -d --build
@@ -50,3 +50,7 @@ smoke-attachment-extract-local:
 smoke-telegram-delivery:
 	docker compose -f infra/docker-compose.yml stop worker || true
 	./scripts/smoke_telegram_delivery_flow.sh
+
+smoke-contract:
+	docker compose -f infra/docker-compose.yml up -d --build backend worker
+	./scripts/smoke_contract_execution.sh

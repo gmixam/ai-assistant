@@ -100,7 +100,7 @@ def create_task(task: TaskCreateRequest, db: Session = Depends(get_db)):
     try:
         enqueue_task(db_task.id)
     except Exception:
-        logger.exception("failed to enqueue task", extra={"task_id": db_task.id})
+        logger.exception("event=intake_failure task_id=%s failure_category=intake_failure", db_task.id)
         # Keep task in "created" so it can be retried/reconciled later.
         raise HTTPException(
             status_code=503,

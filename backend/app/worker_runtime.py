@@ -2,11 +2,12 @@ import argparse
 import logging
 import os
 from datetime import datetime, timezone
-from types import SimpleNamespace
 
 from sqlalchemy.orm import Session
 
-from .attachment_pipeline import AttachmentProcessingError, prepare_task_execution_input
+from .attachment_pipeline import AttachmentProcessingError
+from .agents.router import ExecutionRouter
+from .agents.registry import FileAgentRegistry
 from .database import Base, SessionLocal, engine
 from .executors.base import TaskExecutor
 from .executors.factory import build_executor
@@ -37,11 +38,26 @@ def _executor_details(executor: TaskExecutor) -> tuple[str, str | None]:
 
 
 def _log_task_final(task: Task) -> None:
+    _log_task_final_structured(task, agent_id=None, team_id=None, failure_category=None)
+
+
+def _log_task_final_structured(
+    task: Task,
+    agent_id: str | None,
+    team_id: str | None,
+    failure_category: str | None,
+) -> None:
+    resolved_failure_category = failure_category
+    if resolved_failure_category is None and task.delivery_status == "failed":
+        resolved_failure_category = "delivery_failure"
     logger.info(
-        "event=task_finalized task_id=%s final_status=%s delivery_status=%s",
+        "event=task_finalized task_id=%s team_id=%s agent_id=%s final_status=%s delivery_status=%s failure_category=%s",
         task.id,
+        team_id or "none",
+        agent_id or "none",
         task.status,
         task.delivery_status or "none",
+        resolved_failure_category or "none",
     )
 
 
@@ -83,9 +99,11 @@ def _deliver_task_result(task: Task, db: Session) -> None:
     logger.error("event=telegram_delivery_failed task_id=%s telegram_chat_id=%s delivery_status=%s error=%s", task.id, task.telegram_chat_id, task.delivery_status, task.delivery_error)
 
 
-def process_task(task_id: str, executor: TaskExecutor) -> None:
+def process_task(task_id: str, executor: TaskExecutor, router: ExecutionRouter) -> None:
     db = SessionLocal()
     provider, model = _executor_details(executor)
+    resolved_agent_id: str | None = None
+    resolved_team_id: str | None = None
     try:
         task = db.get(Task, task_id)
         if task is None:
@@ -112,63 +130,86 @@ def process_task(task_id: str, executor: TaskExecutor) -> None:
         db.refresh(task)
 
         try:
-            execution_input = prepare_task_execution_input(task, db)
+            resolution = router.resolve(task, db)
+            resolved_agent_id = resolution.agent.agent_id
+            resolved_team_id = resolution.team.team_id if resolution.team is not None else resolution.agent.team_id
+            output = router.route(task, db, executor)
         except AttachmentProcessingError as exc:
             task.status = "failed"
             task.result_text = None
             task.error_text = str(exc)
             db.commit()
             db.refresh(task)
-            logger.error("event=attachment_preparation_failed task_id=%s error=%s", task_id, str(exc))
+            failure_category = _categorize_attachment_failure(str(exc))
+            logger.error(
+                "event=attachment_preparation_failed task_id=%s team_id=%s agent_id=%s failure_category=%s error=%s",
+                task_id,
+                resolved_team_id or "none",
+                resolved_agent_id or "none",
+                failure_category,
+                str(exc),
+            )
             _deliver_task_result(task, db)
-            _log_task_final(task)
+            _log_task_final_structured(task, resolved_agent_id, resolved_team_id, failure_category)
             return
+        except Exception as exc:
+            failure_category = _categorize_execution_exception(resolved_agent_id, exc)
+            logger.exception(
+                "event=agent_routing_failed task_id=%s team_id=%s agent_id=%s failure_category=%s error=%s",
+                task_id,
+                resolved_team_id or "none",
+                resolved_agent_id or "none",
+                failure_category,
+                exc,
+            )
+            raise
 
-        execution_task = SimpleNamespace(
-            id=task.id,
-            input_text=execution_input,
-        )
-        logger.info(
-            "event=ai_execution_started task_id=%s provider=%s model=%s",
-            task_id,
-            provider,
-            model or "none",
-        )
-        execution = executor.execute(execution_task)
-
-        if execution.success:
+        if output.success:
             task.status = "done"
-            task.result_text = execution.result_text
+            task.result_text = output.result_text
             task.error_text = None
             logger.info(
-                "event=ai_execution_completed task_id=%s provider=%s model=%s final_status=%s",
+                "event=agent_execution_succeeded task_id=%s team_id=%s agent_id=%s provider=%s model=%s",
                 task_id,
+                output.team_id or "none",
+                output.agent_id,
                 provider,
                 model or "none",
-                task.status,
             )
         else:
             task.status = "failed"
             task.result_text = None
-            task.error_text = execution.error_text or "executor reported unsuccessful processing"
+            task.error_text = output.error_text or "executor reported unsuccessful processing"
+            failure_category = _categorize_output_failure(output.agent_id, task.error_text)
             logger.error(
-                "event=ai_execution_failed task_id=%s provider=%s model=%s error=%s",
+                "event=agent_execution_failed task_id=%s team_id=%s agent_id=%s provider=%s model=%s failure_category=%s error=%s",
                 task_id,
+                output.team_id or "none",
+                output.agent_id,
                 provider,
                 model or "none",
+                failure_category,
                 task.error_text,
             )
         db.commit()
         db.refresh(task)
         if task.status == "done":
             _deliver_task_result(task, db)
-            _log_task_final(task)
+            _log_task_final_structured(task, output.agent_id, output.team_id, None)
         else:
             _deliver_task_result(task, db)
-            _log_task_final(task)
+            _log_task_final_structured(task, output.agent_id, output.team_id, _categorize_output_failure(output.agent_id, task.error_text))
     except Exception as exc:
         db.rollback()
-        logger.exception("event=worker_task_failed task_id=%s error=%s", task_id, exc)
+        failure_category = _categorize_execution_exception(resolved_agent_id, exc)
+        logger.exception(
+            "event=worker_task_failed task_id=%s team_id=%s agent_id=%s failure_category=%s error=%s",
+            task_id,
+            resolved_team_id or "none",
+            resolved_agent_id or "none",
+            failure_category,
+            exc,
+        )
         try:
             task = db.get(Task, task_id)
             if task is not None:
@@ -177,7 +218,7 @@ def process_task(task_id: str, executor: TaskExecutor) -> None:
                 task.error_text = str(exc)
                 db.commit()
                 db.refresh(task)
-                _log_task_final(task)
+                _log_task_final_structured(task, resolved_agent_id, resolved_team_id, failure_category)
         except Exception:
             db.rollback()
             logger.exception("event=task_failed_persist_error task_id=%s", task_id)
@@ -189,6 +230,7 @@ def run_worker(max_tasks: int = 0, poll_timeout_seconds: int = 5) -> None:
     Base.metadata.create_all(bind=engine)
     ensure_task_optional_columns(engine)
     executor = build_executor()
+    router = ExecutionRouter(FileAgentRegistry())
     provider, model = _executor_details(executor)
     processed_count = 0
     logger.info(
@@ -203,12 +245,33 @@ def run_worker(max_tasks: int = 0, poll_timeout_seconds: int = 5) -> None:
         if task_id is None:
             continue
 
-        process_task(task_id, executor)
+        process_task(task_id, executor, router)
         processed_count += 1
 
         if max_tasks > 0 and processed_count >= max_tasks:
             logger.info("event=worker_stopped processed_count=%s reason=max_tasks", processed_count)
             return
+
+
+def _categorize_attachment_failure(error_text: str) -> str:
+    text = (error_text or "").lower()
+    if "download" in text or "getfile" in text or "telegram_file_id" in text or "network error" in text:
+        return "attachment_failure"
+    return "extraction_failure"
+
+
+def _categorize_output_failure(agent_id: str | None, error_text: str | None) -> str:
+    if agent_id == "approval_prep_agent":
+        return "approval_preparation_failure"
+    return "agent_execution_failure"
+
+
+def _categorize_execution_exception(agent_id: str | None, exc: Exception) -> str:
+    if isinstance(exc, AttachmentProcessingError):
+        return _categorize_attachment_failure(str(exc))
+    if agent_id == "approval_prep_agent":
+        return "approval_preparation_failure"
+    return "agent_execution_failure"
 
 
 def parse_args() -> argparse.Namespace:
