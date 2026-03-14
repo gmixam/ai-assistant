@@ -15,6 +15,7 @@ fi
 API_BASE_URL="${API_BASE_URL:-http://localhost:8000}"
 BACKEND_CONTAINER="${BACKEND_CONTAINER:-ai_backend}"
 WORKER_CONTAINER="${WORKER_CONTAINER:-ai_worker}"
+COMPOSE_FILE="${COMPOSE_FILE:-infra/docker-compose.yml}"
 WORKER_MODE="${WORKER_MODE:-service}"
 WORKER_WAIT_TIMEOUT_SECONDS="${WORKER_WAIT_TIMEOUT_SECONDS:-40}"
 WORKER_POLL_INTERVAL_SECONDS="${WORKER_POLL_INTERVAL_SECONDS:-1}"
@@ -35,8 +36,27 @@ require_cmd curl
 require_cmd docker
 require_cmd python3
 
+resolve_container() {
+  local requested="$1"
+  local service="$2"
+  if docker inspect "$requested" >/dev/null 2>&1; then
+    printf '%s\n' "$requested"
+    return 0
+  fi
+  local resolved
+  resolved="$(docker compose -f "$COMPOSE_FILE" ps -q "$service" 2>/dev/null || true)"
+  if [[ -n "$resolved" ]] && docker inspect "$resolved" >/dev/null 2>&1; then
+    printf '%s\n' "$resolved"
+    return 0
+  fi
+  return 1
+}
+
+BACKEND_CONTAINER="$(resolve_container "$BACKEND_CONTAINER" backend)" || fail "backend container not found: $BACKEND_CONTAINER"
+WORKER_CONTAINER="$(resolve_container "$WORKER_CONTAINER" worker 2>/dev/null || true)"
+
 list_backend_worker_runtime_pids() {
-  docker exec "$BACKEND_CONTAINER" python3 - <<'PY'
+  docker exec -i "$BACKEND_CONTAINER" python3 - <<'PY'
 import os
 
 for pid in sorted(os.listdir("/proc"), key=lambda x: int(x) if x.isdigit() else 10**9):
@@ -50,8 +70,6 @@ for pid in sorted(os.listdir("/proc"), key=lambda x: int(x) if x.isdigit() else 
         print(pid)
 PY
 }
-
-docker inspect "$BACKEND_CONTAINER" >/dev/null 2>&1 || fail "backend container not found: $BACKEND_CONTAINER"
 curl -fsS "$API_BASE_URL/health" >/dev/null || fail "backend healthcheck failed: $API_BASE_URL/health"
 echo "PASS: backend healthcheck is reachable"
 
@@ -86,7 +104,7 @@ task_id="$(
 echo "PASS: worker smoke task created"
 
 if [[ "$WORKER_MODE" == "service" ]]; then
-  docker inspect "$WORKER_CONTAINER" >/dev/null 2>&1 || fail "worker container not found: $WORKER_CONTAINER"
+  [[ -n "$WORKER_CONTAINER" ]] || fail "worker container not found: worker"
   worker_running="$(
     docker inspect -f '{{.State.Running}}' "$WORKER_CONTAINER" 2>/dev/null || echo false
   )"
@@ -96,7 +114,7 @@ if [[ "$WORKER_MODE" == "service" ]]; then
   [[ -z "$manual_worker_pids" ]] || fail "service smoke requires no manual worker inside backend (found pids: $manual_worker_pids)"
   echo "PASS: no manual worker is running inside backend"
 else
-  if docker inspect "$WORKER_CONTAINER" >/dev/null 2>&1; then
+  if [[ -n "$WORKER_CONTAINER" ]] && docker inspect "$WORKER_CONTAINER" >/dev/null 2>&1; then
     worker_running="$(
       docker inspect -f '{{.State.Running}}' "$WORKER_CONTAINER" 2>/dev/null || echo false
     )"

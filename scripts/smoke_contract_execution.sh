@@ -15,6 +15,7 @@ fi
 API_BASE_URL="${API_BASE_URL:-http://localhost:8000}"
 BACKEND_CONTAINER="${BACKEND_CONTAINER:-ai_backend}"
 WORKER_CONTAINER="${WORKER_CONTAINER:-ai_worker}"
+COMPOSE_FILE="${COMPOSE_FILE:-infra/docker-compose.yml}"
 WORKER_WAIT_TIMEOUT_SECONDS="${WORKER_WAIT_TIMEOUT_SECONDS:-40}"
 WORKER_POLL_INTERVAL_SECONDS="${WORKER_POLL_INTERVAL_SECONDS:-1}"
 BACKEND_WAIT_TIMEOUT_SECONDS="${BACKEND_WAIT_TIMEOUT_SECONDS:-30}"
@@ -32,8 +33,24 @@ require_cmd curl
 require_cmd docker
 require_cmd python3
 
-docker inspect "$BACKEND_CONTAINER" >/dev/null 2>&1 || fail "backend container not found: $BACKEND_CONTAINER"
-docker inspect "$WORKER_CONTAINER" >/dev/null 2>&1 || fail "worker container not found: $WORKER_CONTAINER"
+resolve_container() {
+  local requested="$1"
+  local service="$2"
+  if docker inspect "$requested" >/dev/null 2>&1; then
+    printf '%s\n' "$requested"
+    return 0
+  fi
+  local resolved
+  resolved="$(docker compose -f "$COMPOSE_FILE" ps -q "$service" 2>/dev/null || true)"
+  if [[ -n "$resolved" ]] && docker inspect "$resolved" >/dev/null 2>&1; then
+    printf '%s\n' "$resolved"
+    return 0
+  fi
+  return 1
+}
+
+BACKEND_CONTAINER="$(resolve_container "$BACKEND_CONTAINER" backend)" || fail "backend container not found: $BACKEND_CONTAINER"
+WORKER_CONTAINER="$(resolve_container "$WORKER_CONTAINER" worker)" || fail "worker container not found: $WORKER_CONTAINER"
 
 backend_deadline=$((SECONDS + BACKEND_WAIT_TIMEOUT_SECONDS))
 until curl -fsS "$API_BASE_URL/health" >/dev/null 2>&1; do

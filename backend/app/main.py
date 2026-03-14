@@ -9,6 +9,7 @@ from .database import Base, SessionLocal, engine
 from .models import ApprovalItem, Task, TaskAttachment
 from .queue import enqueue_task
 from .schema import ensure_task_optional_columns
+from .telegram_delivery import deliver_approval_to_telegram
 from .tasks import (
     ApprovalCreateRequest,
     ApprovalDecisionRequest,
@@ -19,6 +20,7 @@ from .tasks import (
 
 
 app = FastAPI(title="AI Assistant Backend")
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
 logger = logging.getLogger(__name__)
 approval_service = ApprovalService()
 
@@ -215,6 +217,8 @@ def create_approval(task_id: str, payload: ApprovalCreateRequest, db: Session = 
         db,
     )
     logger.info("event=approval_created task_id=%s approval_id=%s status=%s", task.id, item.id, item.status)
+    if task.telegram_chat_id is not None:
+        deliver_approval_to_telegram(task, item)
     return _serialize_approval(item)
 
 
@@ -230,21 +234,44 @@ def get_task_approvals(task_id: str, db: Session = Depends(get_db)):
     }
 
 
+@app.get("/approvals/{approval_id}")
+def get_approval_item(approval_id: int, db: Session = Depends(get_db)):
+    try:
+        item = approval_service.get_item(approval_id, db)
+    except LookupError:
+        raise HTTPException(status_code=404, detail="Approval item not found")
+    return _serialize_approval(item)
+
+
 @app.post("/approvals/{approval_id}/approve")
 def approve_item(approval_id: int, payload: ApprovalDecisionRequest, db: Session = Depends(get_db)):
     try:
-        item = approval_service.approve(approval_id, db, decided_by=payload.decided_by, comment=payload.comment)
+        decision = approval_service.approve(approval_id, db, decided_by=payload.decided_by, comment=payload.comment)
     except LookupError:
         raise HTTPException(status_code=404, detail="Approval item not found")
-    logger.info("event=approval_transition task_id=%s approval_id=%s status=%s", item.task_id, item.id, item.status)
+    item = decision.item
+    logger.info(
+        "event=approval_approved task_id=%s approval_id=%s status=%s idempotent=%s",
+        item.task_id,
+        item.id,
+        item.status,
+        "false" if decision.changed else "true",
+    )
     return _serialize_approval(item)
 
 
 @app.post("/approvals/{approval_id}/reject")
 def reject_item(approval_id: int, payload: ApprovalDecisionRequest, db: Session = Depends(get_db)):
     try:
-        item = approval_service.reject(approval_id, db, decided_by=payload.decided_by, comment=payload.comment)
+        decision = approval_service.reject(approval_id, db, decided_by=payload.decided_by, comment=payload.comment)
     except LookupError:
         raise HTTPException(status_code=404, detail="Approval item not found")
-    logger.info("event=approval_transition task_id=%s approval_id=%s status=%s", item.task_id, item.id, item.status)
+    item = decision.item
+    logger.info(
+        "event=approval_rejected task_id=%s approval_id=%s status=%s idempotent=%s",
+        item.task_id,
+        item.id,
+        item.status,
+        "false" if decision.changed else "true",
+    )
     return _serialize_approval(item)

@@ -35,7 +35,7 @@ require_cmd docker
 require_cmd python3
 
 list_backend_worker_runtime_pids() {
-  docker exec "$BACKEND_CONTAINER" python3 - <<'PY'
+  docker exec -i "$BACKEND_CONTAINER" python3 - <<'PY'
 import os
 
 for pid in sorted(os.listdir("/proc"), key=lambda x: int(x) if x.isdigit() else 10**9):

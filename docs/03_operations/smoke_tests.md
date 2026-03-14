@@ -31,6 +31,8 @@ Recommended mode-specific entry points:
   stops `ai_worker` first and runs isolated one-shot worker smoke
 - `make smoke-contract`:
   brings backend + worker up and validates contract-based document execution, registry resolution, approval creation, and team skeleton wiring
+- `make smoke-approval`:
+  brings backend + bot up and validates approval rendering, lifecycle transitions, idempotency, and deterministic Telegram delivery simulation
 
 For final normal-operation readiness, the manual Telegram document E2E remains the decisive check because it validates:
 - real Telegram file intake
@@ -127,6 +129,18 @@ Validates:
 - approval item creation works
 - email team skeleton is registered with explicit handoff steps
 
+Approval lifecycle smoke:
+```bash
+make smoke-approval
+```
+Validates:
+- approval item creation works
+- Telegram approval summary/details rendering path is stable
+- deterministic approval delivery helper logs `approval_delivery_started/completed`
+- approve and reject transitions are persisted
+- repeated approve/reject requests are idempotent
+- approval state is readable through `GET /approvals/{id}` and `GET /tasks/{id}/approvals`
+
 Local attachment text extraction smoke:
 ```bash
 make smoke-attachment-extract-local
@@ -220,6 +234,12 @@ Useful event names:
 - `event=telegram_delivery_started`
 - `event=telegram_delivery_completed`
 - `event=task_finalized`
+- `event=approval_created`
+- `event=approval_delivery_started`
+- `event=approval_delivery_completed`
+- `event=approval_approved`
+- `event=approval_rejected`
+- `event=approval_delivery_failed`
 
 If the task fails, inspect:
 - `event=attachment_download_failed`
@@ -236,6 +256,7 @@ Failure categories to look for in worker logs:
 ## Approval API quick check
 Approval endpoints:
 - `POST /tasks/{id}/approvals`
+- `GET /approvals/{id}`
 - `POST /approvals/{id}/approve`
 - `POST /approvals/{id}/reject`
 - `GET /tasks/{id}/approvals`
@@ -243,4 +264,11 @@ Approval endpoints:
 Expected behavior:
 - approval item is created with status `pending`
 - approval can transition to `approved` or `rejected`
+- repeated approve/reject calls are safe and keep the existing terminal state
+- expired approvals are returned as `expired` on read
 - `GET /tasks/{id}` and `GET /tasks/{id}/approvals` show the current approval state and decision comment
+
+Telegram approval interaction:
+- approval proposal is delivered as a short summary with `Approve`, `Reject`, and `Show details`
+- `/approval <id>` shows the detailed view on demand
+- `/approve <id>` and `/reject <id>` are safe command fallbacks when inline buttons are unavailable
