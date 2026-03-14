@@ -1,0 +1,193 @@
+{
+  "capabilities": [
+    {
+      "capability_id": "document_analysis",
+      "name": "Document Analysis",
+      "description": "Analyze uploaded business documents and return a concise summary of issues."
+    },
+    {
+      "capability_id": "email_triage",
+      "name": "Email Triage",
+      "description": "Classify incoming email-like tasks and identify workflow intent."
+    },
+    {
+      "capability_id": "action_extraction",
+      "name": "Action Extraction",
+      "description": "Extract proposed actions, deadlines, and follow-up items from task content."
+    },
+    {
+      "capability_id": "approval_preparation",
+      "name": "Approval Preparation",
+      "description": "Prepare approval-ready summaries and handoff payloads."
+    }
+  ],
+  "agents": [
+    {
+      "agent_id": "document_analysis_agent",
+      "name": "Document Analysis Agent",
+      "capability_ids": ["document_analysis"],
+      "input_contract": {
+        "contract_id": "document_analysis_input",
+        "version": "v1",
+        "description": "Normalized input for document analysis execution."
+      },
+      "output_contract": {
+        "contract_id": "agent_result",
+        "version": "v1",
+        "description": "Normalized output contract for agent execution."
+      },
+      "handler_id": "legacy_document_analysis",
+      "task_types": ["document_analysis"],
+      "team_id": "document_analysis_team"
+    },
+    {
+      "agent_id": "email_triage_agent",
+      "name": "Email Triage Agent",
+      "capability_ids": ["email_triage"],
+      "input_contract": {
+        "contract_id": "email_triage_input",
+        "version": "v1",
+        "description": "Normalized input for initial email intake and triage."
+      },
+      "output_contract": {
+        "contract_id": "email_triage_output",
+        "version": "v1",
+        "description": "Normalized triage decision and routing output."
+      },
+      "handler_id": "email_triage_stub",
+      "task_types": ["email_triage"],
+      "team_id": "email_triage_team"
+    },
+    {
+      "agent_id": "action_extraction_agent",
+      "name": "Action Extraction Agent",
+      "capability_ids": ["action_extraction"],
+      "input_contract": {
+        "contract_id": "action_extraction_input",
+        "version": "v1",
+        "description": "Structured email triage output and source context for action extraction."
+      },
+      "output_contract": {
+        "contract_id": "action_extraction_output",
+        "version": "v1",
+        "description": "Extracted actions, follow-ups, and execution hints."
+      },
+      "handler_id": "action_extraction_stub",
+      "task_types": ["email_triage"],
+      "team_id": "email_triage_team"
+    },
+    {
+      "agent_id": "attachment_analysis_agent",
+      "name": "Attachment Analysis Agent",
+      "capability_ids": ["document_analysis"],
+      "input_contract": {
+        "contract_id": "attachment_analysis_input",
+        "version": "v1",
+        "description": "Email attachment context routed into the existing document analysis pipeline."
+      },
+      "output_contract": {
+        "contract_id": "attachment_analysis_output",
+        "version": "v1",
+        "description": "Attachment analysis result normalized for downstream email workflow handoff."
+      },
+      "handler_id": "attachment_document_analysis_bridge",
+      "task_types": ["email_triage"],
+      "team_id": "email_triage_team"
+    },
+    {
+      "agent_id": "approval_prep_agent",
+      "name": "Approval Preparation Agent",
+      "capability_ids": ["approval_preparation"],
+      "input_contract": {
+        "contract_id": "approval_prep_input",
+        "version": "v1",
+        "description": "Combined triage, action extraction, and optional attachment analysis context."
+      },
+      "output_contract": {
+        "contract_id": "approval_prep_output",
+        "version": "v1",
+        "description": "Approval-ready summary, structured result, and handoff payload."
+      },
+      "handler_id": "approval_prep_stub",
+      "task_types": ["email_triage"],
+      "team_id": "email_triage_team"
+    }
+  ],
+  "teams": [
+    {
+      "team_id": "document_analysis_team",
+      "name": "Document Analysis Team",
+      "agent_ids": ["document_analysis_agent"],
+      "entry_agent_id": "document_analysis_agent",
+      "task_types": ["document_analysis"],
+      "workflow_steps": [
+        {
+          "step_id": "document_analysis",
+          "agent_id": "document_analysis_agent",
+          "input_contract_id": "document_analysis_input",
+          "output_contract_id": "agent_result",
+          "description": "Single-agent document analysis execution."
+        }
+      ]
+    },
+    {
+      "team_id": "email_triage_team",
+      "name": "Email Triage Team",
+      "agent_ids": [
+        "email_triage_agent",
+        "action_extraction_agent",
+        "attachment_analysis_agent",
+        "approval_prep_agent"
+      ],
+      "entry_agent_id": "email_triage_agent",
+      "task_types": ["email_triage"],
+      "workflow_steps": [
+        {
+          "step_id": "email_intake",
+          "agent_id": "email_triage_agent",
+          "input_contract_id": "email_triage_input",
+          "output_contract_id": "email_triage_output",
+          "handoff_to": "email_triage_agent",
+          "description": "Email intake and message normalization."
+        },
+        {
+          "step_id": "triage",
+          "agent_id": "email_triage_agent",
+          "input_contract_id": "email_triage_input",
+          "output_contract_id": "email_triage_output",
+          "handoff_to": "action_extraction_agent",
+          "description": "First-pass triage and workflow classification."
+        },
+        {
+          "step_id": "action_extraction",
+          "agent_id": "action_extraction_agent",
+          "input_contract_id": "action_extraction_input",
+          "output_contract_id": "action_extraction_output",
+          "handoff_to": "attachment_analysis_agent",
+          "description": "Extract explicit and implied actions from the triaged message."
+        },
+        {
+          "step_id": "optional_attachment_analysis",
+          "agent_id": "attachment_analysis_agent",
+          "input_contract_id": "attachment_analysis_input",
+          "output_contract_id": "attachment_analysis_output",
+          "handoff_to": "approval_prep_agent",
+          "optional": true,
+          "description": "Reuse existing document-analysis capability when attachments are present."
+        },
+        {
+          "step_id": "approval_preparation",
+          "agent_id": "approval_prep_agent",
+          "input_contract_id": "approval_prep_input",
+          "output_contract_id": "approval_prep_output",
+          "description": "Prepare approval-ready summary and handoff payload."
+        }
+      ]
+    }
+  ],
+  "entrypoints": {
+    "document_analysis": "document_analysis_agent",
+    "email_triage": "email_triage_agent",
+    "default": "document_analysis_agent"
+  }
+}
