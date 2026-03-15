@@ -327,6 +327,10 @@ def _extract_text(payload: bytes, mime_type: str) -> str:
     raise AttachmentProcessingError(f"unsupported attachment mime_type: {mime_type}")
 
 
+def extract_text_from_attachment_bytes(payload: bytes, mime_type: str) -> str:
+    return _extract_text(payload, (mime_type or "").strip().lower())
+
+
 def _extract_pdf_text(payload: bytes) -> str:
     try:
         reader = PdfReader(io.BytesIO(payload))

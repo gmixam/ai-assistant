@@ -46,6 +46,7 @@ class EmailAttachmentMetadata(BaseModel):
     mime_type: Optional[str] = None
     file_size: Optional[int] = None
     is_inline: bool = False
+    provider_payload: dict | None = None
 
 
 class GmailIntakeRequest(BaseModel):
@@ -74,6 +75,12 @@ class EmailAttachmentResponse(BaseModel):
     mime_type: Optional[str] = None
     file_size: Optional[int] = None
     is_inline: bool
+    local_path: Optional[str] = None
+    download_status: Optional[str] = None
+    download_error: Optional[str] = None
+    extracted_text_length: Optional[int] = None
+    sent_text_length: Optional[int] = None
+    was_truncated: Optional[bool] = None
     created_at: datetime
 
 
@@ -100,6 +107,38 @@ class EmailSourceResponse(BaseModel):
     received_at: Optional[datetime] = None
     created_at: datetime
     updated_at: datetime
+
+
+class MailboxSyncRequest(BaseModel):
+    provider: str
+    mailbox: str
+    limit: int | None = None
+    provider_options: dict | None = None
+
+
+class MailboxSyncStateResponse(BaseModel):
+    id: int
+    provider: str
+    mailbox: str
+    checkpoint: dict = Field(default_factory=dict)
+    last_status: Optional[str] = None
+    last_error: Optional[str] = None
+    last_synced_at: Optional[datetime] = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class MailboxSyncResponse(BaseModel):
+    provider: str
+    mailbox: str
+    fetched_count: int
+    normalized_count: int
+    ignore_count: int
+    light_count: int
+    deep_count: int
+    duplicate_count: int
+    task_count: int
+    checkpoint: dict = Field(default_factory=dict)
 
 
 class ApprovalCreateRequest(BaseModel):

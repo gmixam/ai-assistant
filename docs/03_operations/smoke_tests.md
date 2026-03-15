@@ -23,12 +23,20 @@
 - duplicate email intake is persisted and linked to the original source without creating another task
 
 `make smoke-email-team` validates the deep email team flow in isolated mode:
-- deep Gmail intake creates an email-backed task
+- deep provider-backed intake creates an email-backed task
 - only the deep task enters `email_triage_team`
 - explicit team handoffs are logged across triage, action extraction, attachment analysis, and approval prep
 - attachment analysis reuses the document-analysis capability bridge
 - approval item is created automatically by worker completion
 - Telegram approval delivery is exercised through deterministic mock-success delivery
+
+`make smoke-mail-provider` validates the provider abstraction layer in isolated mode:
+- adapter registry resolves provider ids
+- provider fetch -> normalize -> intake reuse works through a common sync endpoint
+- ignore/light/deep/duplicate behavior remains deterministic
+- deep-only tasks are created and processed
+- provider-agnostic attachment download contract is exercised
+- checkpoint state is persisted
 
 ## How to run
 From repository root:
@@ -38,6 +46,7 @@ make smoke-normal
 make smoke
 make smoke-email-intake
 make smoke-email-team
+make smoke-mail-provider
 ```
 
 Recommended mode-specific entry points:
@@ -55,6 +64,8 @@ Recommended mode-specific entry points:
   stops `ai_worker` first and runs deterministic Gmail intake smoke for ignore/light/deep/attachment/duplicate routing
 - `make smoke-email-team`:
   stops `ai_worker` first and runs deterministic deep email team smoke through approval creation and Telegram approval delivery
+- `make smoke-mail-provider`:
+  stops `ai_worker` first and runs deterministic provider sync smoke over the common mailbox abstraction layer
 
 For final normal-operation readiness, the manual Telegram document E2E remains the decisive check because it validates:
 - real Telegram file intake
@@ -194,6 +205,17 @@ Validates:
 - attachment analysis uses the document-analysis bridge instead of a separate attachment subsystem
 - worker creates one approval item and triggers Telegram approval delivery
 - task finishes `done` without sending a separate task-result Telegram message
+
+Mail provider abstraction smoke:
+```bash
+make smoke-mail-provider
+```
+Validates:
+- `/mail-providers` exposes provider registry resolution
+- `/mailboxes/sync` reuses common intake logic after provider normalization
+- checkpoint state is readable via `/mailboxes/{provider}/{mailbox}/checkpoint`
+- deep attachment path downloads content only when the deep task is processed
+- fake provider gives deterministic coverage without needing live Mail.ru credentials
 
 Manual Telegram intake scenarios:
 1. Text only:

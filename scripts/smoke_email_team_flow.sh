@@ -15,6 +15,8 @@ fi
 API_BASE_URL="${API_BASE_URL:-http://localhost:8000}"
 BACKEND_CONTAINER="${BACKEND_CONTAINER:-ai_backend}"
 WORKER_CONTAINER="${WORKER_CONTAINER:-ai_worker}"
+REDIS_CONTAINER="${REDIS_CONTAINER:-ai_redis}"
+TASK_QUEUE_NAME="${TASK_QUEUE_NAME:-tasks:queue}"
 COMPOSE_FILE="${COMPOSE_FILE:-infra/docker-compose.yml}"
 WORKER_WAIT_TIMEOUT_SECONDS="${WORKER_WAIT_TIMEOUT_SECONDS:-40}"
 WORKER_POLL_INTERVAL_SECONDS="${WORKER_POLL_INTERVAL_SECONDS:-1}"
@@ -67,6 +69,7 @@ PY
 
 BACKEND_CONTAINER="$(resolve_container "$BACKEND_CONTAINER" backend)" || fail "backend container not found: $BACKEND_CONTAINER"
 WORKER_CONTAINER="$(resolve_container "$WORKER_CONTAINER" worker 2>/dev/null || true)"
+docker inspect "$REDIS_CONTAINER" >/dev/null 2>&1 || fail "redis container not found: $REDIS_CONTAINER"
 
 curl -fsS "$API_BASE_URL/health" >/dev/null || fail "backend healthcheck failed: $API_BASE_URL/health"
 echo "PASS: backend healthcheck is reachable"
@@ -83,23 +86,36 @@ existing_manual_worker_pids="$(list_backend_worker_runtime_pids)"
 [[ -z "$existing_manual_worker_pids" ]] || fail "email team smoke requires no existing manual worker inside backend (found pids: $existing_manual_worker_pids)"
 echo "PASS: no manual worker is running inside backend"
 
-run_id="$(date -u +%Y%m%dT%H%M%SZ)"
-post_response="$(
-  curl -fsS \
-    -X POST "$API_BASE_URL/email-intake/gmail/messages" \
-    -H "Content-Type: application/json" \
-    -d "{\"mailbox\":\"ops@example.com\",\"provider_message_id\":\"gmail-team-$run_id\",\"internet_message_id\":\"<team-$run_id@example.com>\",\"from_address\":\"legal@example.net\",\"subject\":\"Urgent contract review and approval\",\"snippet\":\"Please review the attached contract and approve the reply to the client by tomorrow.\",\"labels\":[\"INBOX\",\"IMPORTANT\"],\"attachments\":[{\"provider_attachment_id\":\"att-team-1\",\"filename\":\"contract.pdf\",\"mime_type\":\"application/pdf\",\"file_size\":4096,\"is_inline\":false}],\"telegram_chat_id\":10001,\"reply_to_message_id\":1}"
-)" || fail "POST /email-intake/gmail/messages failed"
+docker exec "$REDIS_CONTAINER" redis-cli DEL "$TASK_QUEUE_NAME" >/dev/null
+echo "PASS: queue was reset for isolated email team smoke"
 
-email_source_id="$(
-  printf '%s' "$post_response" | python3 -c 'import json,sys; d=json.load(sys.stdin); print(d.get("id") or "")'
+run_id="$(date -u +%Y%m%dT%H%M%SZ)"
+mailbox="ops-team-$run_id@example.com"
+contract_b64="$(printf 'Contract clause 1. Approval needed before reply.' | base64 -w0)"
+sync_response="$(
+  curl -fsS \
+    -X POST "$API_BASE_URL/mailboxes/sync" \
+    -H "Content-Type: application/json" \
+    -d "{\"provider\":\"fake\",\"mailbox\":\"$mailbox\",\"provider_options\":{\"messages\":[{\"uid\":1001,\"provider_message_id\":\"fake-team-$run_id\",\"internet_message_id\":\"<team-$run_id@example.com>\",\"from_address\":\"legal@example.net\",\"subject\":\"Urgent contract review and approval\",\"snippet\":\"Please review the attached contract and approve the reply to the client by tomorrow.\",\"labels\":[\"INBOX\",\"IMPORTANT\"],\"telegram_chat_id\":10001,\"reply_to_message_id\":1,\"attachments\":[{\"attachment_id\":\"att-team-1\",\"filename\":\"contract.txt\",\"mime_type\":\"text/plain\",\"file_size\":52,\"is_inline\":false,\"content_base64\":\"$contract_b64\"}]}]}}"
+)" || fail "POST /mailboxes/sync failed"
+
+deep_count="$(
+  printf '%s' "$sync_response" | python3 -c 'import json,sys; d=json.load(sys.stdin); print(d.get("deep_count") or 0)'
 )"
-task_id="$(
-  printf '%s' "$post_response" | python3 -c 'import json,sys; d=json.load(sys.stdin); print(d.get("task_id") or "")'
+[[ "$deep_count" == "1" ]] || fail "mailbox sync deep_count expected 1, got: $deep_count"
+
+email_lookup="$(
+  docker exec -i "$BACKEND_CONTAINER" python3 - <<PY
+from app.database import SessionLocal
+from app.models import EmailSource
+
+db = SessionLocal()
+item = db.query(EmailSource).filter(EmailSource.provider_message_id == "fake-team-$run_id").first()
+print(f"{item.id}|{item.task_id}|{item.routing_decision}" if item is not None else "||")
+db.close()
+PY
 )"
-routing_decision="$(
-  printf '%s' "$post_response" | python3 -c 'import json,sys; d=json.load(sys.stdin); print(d.get("routing_decision") or "")'
-)"
+IFS='|' read -r email_source_id task_id routing_decision <<<"$email_lookup"
 [[ -n "$email_source_id" ]] || fail "email_source_id is missing"
 [[ -n "$task_id" ]] || fail "deep email task_id is missing"
 [[ "$routing_decision" == "deep" ]] || fail "routing_decision expected deep, got: $routing_decision"
@@ -177,6 +193,10 @@ printf '%s\n' "$worker_logs" | grep -q "event=agent_handoff task_id=$task_id tea
   || fail "triage handoff log not found"
 printf '%s\n' "$worker_logs" | grep -q "event=attachment_analysis_reused task_id=$task_id team_id=email_triage_team agent_id=attachment_analysis_agent capability=document_analysis attachment_count=1" \
   || fail "attachment analysis reuse log not found"
+printf '%s\n' "$worker_logs" | grep -q "event=mail_attachment_download_started provider=fake mailbox=$mailbox email_source_id=$email_source_id attachment_id=" \
+  || fail "mail attachment download start log not found"
+printf '%s\n' "$worker_logs" | grep -q "event=mail_attachment_download_completed provider=fake mailbox=$mailbox email_source_id=$email_source_id attachment_id=" \
+  || fail "mail attachment download completion log not found"
 printf '%s\n' "$worker_logs" | grep -q "event=approval_created task_id=$task_id approval_id=" \
   || fail "approval_created log not found"
 printf '%s\n' "$worker_logs" | grep -q "event=approval_delivery_started task_id=$task_id approval_id=.* telegram_chat_id=10001 status=pending" \

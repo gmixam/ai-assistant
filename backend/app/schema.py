@@ -93,7 +93,31 @@ def ensure_task_optional_columns(engine: Engine) -> None:
                     mime_type VARCHAR(255),
                     file_size INTEGER,
                     is_inline BOOLEAN NOT NULL DEFAULT FALSE,
+                    provider_payload TEXT,
+                    local_path TEXT,
+                    download_status VARCHAR(32),
+                    download_error TEXT,
+                    extracted_text_length INTEGER,
+                    sent_text_length INTEGER,
+                    was_truncated BOOLEAN,
                     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                )
+                """
+            )
+        )
+        connection.execute(
+            text(
+                """
+                CREATE TABLE IF NOT EXISTS mailbox_sync_states (
+                    id SERIAL PRIMARY KEY,
+                    provider VARCHAR(32) NOT NULL,
+                    mailbox VARCHAR(255) NOT NULL,
+                    checkpoint_json TEXT NOT NULL DEFAULT '{}',
+                    last_status VARCHAR(32),
+                    last_error TEXT,
+                    last_synced_at TIMESTAMPTZ,
+                    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
                 )
                 """
             )
@@ -111,3 +135,18 @@ def ensure_task_optional_columns(engine: Engine) -> None:
         connection.execute(
             text("CREATE INDEX IF NOT EXISTS ix_email_attachments_email_source_id ON email_attachments(email_source_id)")
         )
+        connection.execute(text("CREATE INDEX IF NOT EXISTS ix_mailbox_sync_states_provider ON mailbox_sync_states(provider)"))
+        connection.execute(text("CREATE INDEX IF NOT EXISTS ix_mailbox_sync_states_mailbox ON mailbox_sync_states(mailbox)"))
+        connection.execute(text("ALTER TABLE email_attachments ADD COLUMN IF NOT EXISTS provider_payload TEXT"))
+        connection.execute(text("ALTER TABLE email_attachments ADD COLUMN IF NOT EXISTS local_path TEXT"))
+        connection.execute(text("ALTER TABLE email_attachments ADD COLUMN IF NOT EXISTS download_status VARCHAR(32)"))
+        connection.execute(text("ALTER TABLE email_attachments ADD COLUMN IF NOT EXISTS download_error TEXT"))
+        connection.execute(text("ALTER TABLE email_attachments ADD COLUMN IF NOT EXISTS extracted_text_length INTEGER"))
+        connection.execute(text("ALTER TABLE email_attachments ADD COLUMN IF NOT EXISTS sent_text_length INTEGER"))
+        connection.execute(text("ALTER TABLE email_attachments ADD COLUMN IF NOT EXISTS was_truncated BOOLEAN"))
+        connection.execute(text("ALTER TABLE mailbox_sync_states ADD COLUMN IF NOT EXISTS checkpoint_json TEXT"))
+        connection.execute(text("ALTER TABLE mailbox_sync_states ADD COLUMN IF NOT EXISTS last_status VARCHAR(32)"))
+        connection.execute(text("ALTER TABLE mailbox_sync_states ADD COLUMN IF NOT EXISTS last_error TEXT"))
+        connection.execute(text("ALTER TABLE mailbox_sync_states ADD COLUMN IF NOT EXISTS last_synced_at TIMESTAMPTZ"))
+        connection.execute(text("ALTER TABLE mailbox_sync_states ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ"))
+        connection.execute(text("ALTER TABLE mailbox_sync_states ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ"))

@@ -27,11 +27,22 @@ Target user flow:
 `Telegram document -> attachment download -> text extraction -> AI analysis -> Telegram reply`
 
 ## Email intake foundation
-The current mailbox intake foundation adds a Gmail-specific intake endpoint with a cascading decision flow:
+The current mailbox intake foundation is provider-agnostic in core logic and adds a first live adapter for `mailru_imap` plus deterministic `fake` provider for smoke:
 
 `mailbox intake -> deterministic pre-filter -> cheap triage -> routing decision (ignore/light/deep)`
 
 Only `deep` emails create execution tasks. `ignore` and `light` emails stay persisted as `email_sources` plus `email_attachments` metadata for later review and future workflow expansion.
+
+Provider-specific responsibilities now sit behind a common contract:
+- fetch new messages
+- fetch one message
+- download attachment
+- checkpoint / sync state
+- normalize provider payload
+
+Current first live provider path:
+- `mailru_imap` for Mail.ru / VK-hosted corporate mailbox access
+- `fake` for deterministic provider smoke
 
 Deep email tasks now route into `email_triage_team`:
 

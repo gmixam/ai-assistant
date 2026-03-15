@@ -8,7 +8,8 @@ from sqlalchemy.orm import Session
 from .approval_service import ApprovalCreateData, ApprovalService
 from .database import Base, SessionLocal, engine
 from .email_intake import persist_gmail_intake
-from .models import ApprovalItem, EmailAttachment, EmailSource, Task, TaskAttachment
+from .mail_sync import MailSyncService
+from .models import ApprovalItem, EmailAttachment, EmailSource, MailboxSyncState, Task, TaskAttachment
 from .queue import enqueue_task
 from .schema import ensure_task_optional_columns
 from .telegram_delivery import deliver_approval_to_telegram
@@ -17,6 +18,9 @@ from .tasks import (
     ApprovalDecisionRequest,
     EmailSourceResponse,
     GmailIntakeRequest,
+    MailboxSyncRequest,
+    MailboxSyncResponse,
+    MailboxSyncStateResponse,
     TaskCreateRequest,
     TaskCreateResponse,
     TaskResponse,
@@ -27,6 +31,7 @@ app = FastAPI(title="AI Assistant Backend")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
 logger = logging.getLogger(__name__)
 approval_service = ApprovalService()
+mail_sync_service = MailSyncService()
 
 
 @app.on_event("startup")
@@ -78,6 +83,12 @@ def _serialize_email(email: EmailSource, db: Session) -> dict:
                 "mime_type": attachment.mime_type,
                 "file_size": attachment.file_size,
                 "is_inline": attachment.is_inline,
+                "local_path": attachment.local_path,
+                "download_status": attachment.download_status,
+                "download_error": attachment.download_error,
+                "extracted_text_length": attachment.extracted_text_length,
+                "sent_text_length": attachment.sent_text_length,
+                "was_truncated": attachment.was_truncated,
                 "created_at": attachment.created_at,
             }
             for attachment in attachments
@@ -91,6 +102,24 @@ def _serialize_email(email: EmailSource, db: Session) -> dict:
         "received_at": email.received_at,
         "created_at": email.created_at,
         "updated_at": email.updated_at,
+    }
+
+
+def _serialize_mailbox_sync_state(state: MailboxSyncState) -> dict:
+    try:
+        checkpoint = json.loads(state.checkpoint_json or "{}")
+    except (TypeError, ValueError):
+        checkpoint = {}
+    return {
+        "id": state.id,
+        "provider": state.provider,
+        "mailbox": state.mailbox,
+        "checkpoint": checkpoint if isinstance(checkpoint, dict) else {},
+        "last_status": state.last_status,
+        "last_error": state.last_error,
+        "last_synced_at": state.last_synced_at,
+        "created_at": state.created_at,
+        "updated_at": state.updated_at,
     }
 
 
@@ -136,6 +165,35 @@ def get_email_source(email_source_id: int, db: Session = Depends(get_db)):
     if email is None:
         raise HTTPException(status_code=404, detail="Email source not found")
     return _serialize_email(email, db)
+
+
+@app.get("/mail-providers")
+def list_mail_providers():
+    return {"providers": mail_sync_service.adapter_registry().list_providers()}
+
+
+@app.post("/mailboxes/sync", response_model=MailboxSyncResponse)
+def sync_mailbox(payload: MailboxSyncRequest, db: Session = Depends(get_db)):
+    try:
+        result = mail_sync_service.sync_mailbox(
+            payload.provider,
+            payload.mailbox,
+            db,
+            provider_options=payload.provider_options,
+            limit=payload.limit,
+        )
+    except KeyError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except Exception:
+        logger.exception("event=mailbox_sync_request_failed provider=%s mailbox=%s", payload.provider, payload.mailbox)
+        raise HTTPException(status_code=503, detail="Mailbox sync failed")
+    return result
+
+
+@app.get("/mailboxes/{provider}/{mailbox}/checkpoint", response_model=MailboxSyncStateResponse)
+def get_mailbox_checkpoint(provider: str, mailbox: str, db: Session = Depends(get_db)):
+    state = mail_sync_service.get_state(provider, mailbox, db)
+    return _serialize_mailbox_sync_state(state)
 
 
 @app.post("/tasks", response_model=TaskCreateResponse)

@@ -1,6 +1,5 @@
 import json
 import logging
-import re
 from types import SimpleNamespace
 from typing import Any, Protocol
 
@@ -8,6 +7,8 @@ from sqlalchemy.orm import Session
 
 from ..attachment_pipeline import prepare_task_execution_input
 from ..executors.base import ExecutionResult, TaskExecutor
+from ..mail_attachment_service import build_email_attachment_analysis_text
+from ..mail_providers.registry import MailProviderRegistry
 from ..models import EmailAttachment, EmailSource, Task, TaskAttachment
 from .models import (
     AgentDefinition,
@@ -64,9 +65,15 @@ class EmailTriageTeamHandler:
         ("call", "schedule_follow_up"),
     )
 
-    def __init__(self, registry: AgentRegistry, document_handler: DocumentAnalysisExecutionHandler):
+    def __init__(
+        self,
+        registry: AgentRegistry,
+        document_handler: DocumentAnalysisExecutionHandler,
+        mail_provider_registry: MailProviderRegistry,
+    ):
         self._registry = registry
         self._document_handler = document_handler
+        self._mail_provider_registry = mail_provider_registry
 
     def execute(
         self,
@@ -121,7 +128,16 @@ class EmailTriageTeamHandler:
                 step.input_contract_id,
                 step.output_contract_id,
             )
-            step_output = self._execute_step(step, task, email_source, email_attachments, context, executor, team.team_id)
+            step_output = self._execute_step(
+                step,
+                task,
+                email_source,
+                email_attachments,
+                context,
+                executor,
+                team.team_id,
+                db,
+            )
             if not step_output.success:
                 logger.error(
                     "event=team_step_failed task_id=%s team_id=%s step_id=%s agent_id=%s error=%s",
@@ -191,13 +207,14 @@ class EmailTriageTeamHandler:
         context: dict[str, Any],
         executor: TaskExecutor,
         team_id: str,
+        db: Session,
     ) -> AgentOutputContract:
         if step.agent_id == "email_triage_agent":
             return self._execute_email_triage(task, email_source, email_attachments, team_id)
         if step.agent_id == "action_extraction_agent":
             return self._execute_action_extraction(task, email_source, context, team_id)
         if step.agent_id == "attachment_analysis_agent":
-            return self._execute_attachment_analysis(task, email_source, email_attachments, executor, team_id)
+            return self._execute_attachment_analysis(task, email_source, email_attachments, executor, team_id, db)
         if step.agent_id == "approval_prep_agent":
             return self._execute_approval_prep(task, email_source, context, team_id)
         return AgentOutputContract(
@@ -311,11 +328,14 @@ class EmailTriageTeamHandler:
         email_attachments: list[EmailAttachment],
         executor: TaskExecutor,
         team_id: str,
+        db: Session,
     ) -> AgentOutputContract:
-        attachment_descriptions = [
-            f"- filename={attachment.filename or 'unknown'} mime_type={attachment.mime_type or 'unknown'} size={attachment.file_size or 0}"
-            for attachment in email_attachments
-        ]
+        attachment_analysis_input = build_email_attachment_analysis_text(
+            email_source,
+            email_attachments,
+            self._mail_provider_registry,
+            db,
+        )
         agent_input = AgentInputContract(
             task_id=task.id,
             task_type="email_triage",
@@ -325,8 +345,8 @@ class EmailTriageTeamHandler:
                 "Email attachment analysis via document-analysis bridge\n"
                 f"email_source_id={email_source.id}\n"
                 f"subject={email_source.subject or '(no subject)'}\n"
-                "Attachment metadata:\n"
-                + "\n".join(attachment_descriptions)
+                "Downloaded attachment content:\n"
+                + attachment_analysis_input
             ),
             metadata={
                 "attachment_count": len(email_attachments),
@@ -352,7 +372,10 @@ class EmailTriageTeamHandler:
             metadata={
                 "attachment_count": len(email_attachments),
                 "analysis_mode": "document_analysis_bridge",
-                "attachment_summary": attachment_descriptions,
+                "attachment_summary": [
+                    f"- filename={attachment.filename or 'unknown'} mime_type={attachment.mime_type or 'unknown'} size={attachment.file_size or 0}"
+                    for attachment in email_attachments
+                ],
             },
         )
 
@@ -422,7 +445,12 @@ class ExecutionRouter:
     def __init__(self, registry: AgentRegistry, handlers: dict[str, ExecutionHandler] | None = None):
         self._registry = registry
         self._document_handler = DocumentAnalysisExecutionHandler()
-        self._email_team_handler = EmailTriageTeamHandler(registry, self._document_handler)
+        self._mail_provider_registry = MailProviderRegistry()
+        self._email_team_handler = EmailTriageTeamHandler(
+            registry,
+            self._document_handler,
+            self._mail_provider_registry,
+        )
         self._handlers = handlers or {
             "legacy_document_analysis": self._document_handler,
             "attachment_document_analysis_bridge": self._document_handler,
