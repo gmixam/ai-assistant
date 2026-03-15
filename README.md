@@ -26,6 +26,13 @@ Target user flow:
 
 `Telegram document -> attachment download -> text extraction -> AI analysis -> Telegram reply`
 
+## Email intake foundation
+The current mailbox intake foundation adds a Gmail-specific intake endpoint with a cascading decision flow:
+
+`mailbox intake -> deterministic pre-filter -> cheap triage -> routing decision (ignore/light/deep)`
+
+Only `deep` emails create execution tasks. `ignore` and `light` emails stay persisted as `email_sources` plus `email_attachments` metadata for later review and future workflow expansion.
+
 Primary operational references:
 - [task_execution_step7_telegram_e2e.md](/root/ai-assistant/docs/02_execution_pipeline/task_execution_step7_telegram_e2e.md)
 - [task_execution_step8_file_reading_mvp.md](/root/ai-assistant/docs/02_execution_pipeline/task_execution_step8_file_reading_mvp.md)

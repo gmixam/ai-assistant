@@ -14,12 +14,21 @@
 - task reaches the expected final state
 - result or error text is persisted as expected
 
+`make smoke-email-intake` validates the email intake foundation in isolated mode:
+- Gmail-specific intake endpoint accepts a normalized mailbox payload
+- deterministic pre-filter routes ignore traffic without task creation
+- cheap triage routes light traffic without deep execution
+- deep traffic creates queued execution tasks
+- attachment metadata is persisted on email entities
+- duplicate email intake is persisted and linked to the original source without creating another task
+
 ## How to run
 From repository root:
 ```bash
 make up
 make smoke-normal
 make smoke
+make smoke-email-intake
 ```
 
 Recommended mode-specific entry points:
@@ -33,6 +42,8 @@ Recommended mode-specific entry points:
   brings backend + worker up and validates contract-based document execution, registry resolution, approval creation, and team skeleton wiring
 - `make smoke-approval`:
   brings backend + bot up and validates approval rendering, lifecycle transitions, idempotency, and deterministic Telegram delivery simulation
+- `make smoke-email-intake`:
+  stops `ai_worker` first and runs deterministic Gmail intake smoke for ignore/light/deep/attachment/duplicate routing
 
 For final normal-operation readiness, the manual Telegram document E2E remains the decisive check because it validates:
 - real Telegram file intake
@@ -148,6 +159,18 @@ make smoke-attachment-extract-local
 PDF_SAMPLE_PATH=/absolute/path/to/sample.pdf make smoke-attachment-extract-local
 ```
 This smoke also validates truncation guardrail on oversized extracted content.
+
+Email intake routing smoke:
+```bash
+make smoke-email-intake
+```
+Validates:
+- `POST /email-intake/gmail/messages` persists `email_sources`
+- pre-filter reason codes are persisted for ignore traffic
+- cheap triage score and reason codes are persisted for light/deep traffic
+- only deep traffic creates queued tasks
+- attachment metadata is stored in `email_attachments`
+- duplicate email intake links back through `duplicate_of_email_id`
 
 Manual Telegram intake scenarios:
 1. Text only:

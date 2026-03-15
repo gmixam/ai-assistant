@@ -1,4 +1,4 @@
-.PHONY: up ps worker-up worker-stop debug-worker smoke smoke-normal smoke-worker smoke-worker-debug smoke-worker-openai smoke-worker-openai-no-key smoke-telegram-metadata smoke-task-attachment smoke-attachment-extract-local smoke-telegram-delivery smoke-contract smoke-approval
+.PHONY: up ps worker-up worker-stop debug-worker smoke smoke-normal smoke-worker smoke-worker-debug smoke-worker-openai smoke-worker-openai-no-key smoke-telegram-metadata smoke-task-attachment smoke-attachment-extract-local smoke-telegram-delivery smoke-contract smoke-approval smoke-email-intake
 
 up:
 	docker compose -f infra/docker-compose.yml up -d --build
@@ -58,3 +58,7 @@ smoke-contract:
 smoke-approval:
 	docker compose -f infra/docker-compose.yml up -d --build backend bot
 	./scripts/smoke_approval_flow.sh
+
+smoke-email-intake:
+	docker compose -f infra/docker-compose.yml stop worker || true
+	./scripts/smoke_email_intake_flow.sh

@@ -1,3 +1,4 @@
+import json
 import logging
 from uuid import uuid4
 
@@ -6,13 +7,16 @@ from sqlalchemy.orm import Session
 
 from .approval_service import ApprovalCreateData, ApprovalService
 from .database import Base, SessionLocal, engine
-from .models import ApprovalItem, Task, TaskAttachment
+from .email_intake import persist_gmail_intake
+from .models import ApprovalItem, EmailAttachment, EmailSource, Task, TaskAttachment
 from .queue import enqueue_task
 from .schema import ensure_task_optional_columns
 from .telegram_delivery import deliver_approval_to_telegram
 from .tasks import (
     ApprovalCreateRequest,
     ApprovalDecisionRequest,
+    EmailSourceResponse,
+    GmailIntakeRequest,
     TaskCreateRequest,
     TaskCreateResponse,
     TaskResponse,
@@ -45,6 +49,51 @@ def health():
     return {"status": "ok"}
 
 
+def _serialize_email(email: EmailSource, db: Session) -> dict:
+    attachments = (
+        db.query(EmailAttachment)
+        .filter(EmailAttachment.email_source_id == email.id)
+        .order_by(EmailAttachment.id.asc())
+        .all()
+    )
+    return {
+        "id": email.id,
+        "provider": email.provider,
+        "mailbox": email.mailbox,
+        "provider_message_id": email.provider_message_id,
+        "thread_id": email.thread_id,
+        "internet_message_id": email.internet_message_id,
+        "from_address": email.from_address,
+        "from_name": email.from_name,
+        "subject": email.subject,
+        "snippet": email.snippet,
+        "labels": json.loads(email.labels_json or "[]"),
+        "attachments_count": email.attachments_count,
+        "attachments": [
+            {
+                "id": attachment.id,
+                "email_source_id": attachment.email_source_id,
+                "provider_attachment_id": attachment.provider_attachment_id,
+                "filename": attachment.filename,
+                "mime_type": attachment.mime_type,
+                "file_size": attachment.file_size,
+                "is_inline": attachment.is_inline,
+                "created_at": attachment.created_at,
+            }
+            for attachment in attachments
+        ],
+        "prefilter_status": email.prefilter_status,
+        "triage_score": email.triage_score,
+        "routing_decision": email.routing_decision,
+        "reason_codes": json.loads(email.reason_codes_json or "[]"),
+        "duplicate_of_email_id": email.duplicate_of_email_id,
+        "task_id": email.task_id,
+        "received_at": email.received_at,
+        "created_at": email.created_at,
+        "updated_at": email.updated_at,
+    }
+
+
 def _serialize_approval(item: ApprovalItem) -> dict:
     return {
         "id": item.id,
@@ -65,6 +114,28 @@ def _serialize_approval(item: ApprovalItem) -> dict:
 
 def _load_approvals(task_id: str, db: Session) -> list[ApprovalItem]:
     return approval_service.list_for_task(task_id, db)
+
+
+@app.post("/email-intake/gmail/messages", response_model=EmailSourceResponse)
+def ingest_gmail_message(payload: GmailIntakeRequest, db: Session = Depends(get_db)):
+    try:
+        email = persist_gmail_intake(payload, db)
+    except Exception:
+        logger.exception(
+            "event=email_intake_failed provider=gmail mailbox=%s provider_message_id=%s",
+            payload.mailbox,
+            payload.provider_message_id,
+        )
+        raise HTTPException(status_code=503, detail="Email intake failed")
+    return _serialize_email(email, db)
+
+
+@app.get("/email-sources/{email_source_id}", response_model=EmailSourceResponse)
+def get_email_source(email_source_id: int, db: Session = Depends(get_db)):
+    email = db.get(EmailSource, email_source_id)
+    if email is None:
+        raise HTTPException(status_code=404, detail="Email source not found")
+    return _serialize_email(email, db)
 
 
 @app.post("/tasks", response_model=TaskCreateResponse)

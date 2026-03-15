@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 
-from sqlalchemy import BigInteger, Boolean, DateTime, ForeignKey, Integer, String
+from sqlalchemy import BigInteger, Boolean, DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from .database import Base
@@ -76,4 +76,56 @@ class ApprovalItem(Base):
         nullable=False,
         default=lambda: datetime.now(timezone.utc),
         onupdate=lambda: datetime.now(timezone.utc),
+    )
+
+
+class EmailSource(Base):
+    __tablename__ = "email_sources"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    provider: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
+    mailbox: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    provider_message_id: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    thread_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    internet_message_id: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
+    from_address: Mapped[str] = mapped_column(String(255), nullable=False)
+    from_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    subject: Mapped[str | None] = mapped_column(String, nullable=True)
+    snippet: Mapped[str | None] = mapped_column(String, nullable=True)
+    labels_json: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
+    attachments_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    source_payload: Mapped[str | None] = mapped_column(Text, nullable=True)
+    dedupe_key: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    duplicate_of_email_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("email_sources.id"), nullable=True)
+    prefilter_status: Mapped[str] = mapped_column(String(32), nullable=False, default="pending")
+    triage_score: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    routing_decision: Mapped[str] = mapped_column(String(32), nullable=False, default="pending")
+    reason_codes_json: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
+    task_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("tasks.id"), nullable=True, index=True)
+    received_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc)
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+    )
+
+
+class EmailAttachment(Base):
+    __tablename__ = "email_attachments"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    email_source_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("email_sources.id"), nullable=False, index=True
+    )
+    provider_attachment_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    filename: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    mime_type: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    file_size: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    is_inline: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc)
     )
