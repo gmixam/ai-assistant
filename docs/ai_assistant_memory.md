@@ -68,6 +68,8 @@ Long-term target direction:
 - manual worker launch is diagnostic only and should not be treated as normal operation
 - normal and debug smoke modes are intentionally separated
 - shared `/storage` is required for consistent attachment handling between backend and worker
+- this repo currently runs on a constrained shared server, so live remote development must follow the single live-operator rule
+- heavy remote IDE sessions, extension hosts, and watcher-heavy workflows should be minimized until server resources are upgraded
 
 ## Constraints
 - keep MVP-safe changes first
@@ -96,6 +98,8 @@ Long-term target direction:
 
 ## Current main documents
 - `docs/README.md`
+- `docs/AI_AGENT_WORKFLOW.md`
+- `docs/SERVER_RUNBOOK.md`
 - `docs/00_overview/ai_assistant_project_context.md`
 - `docs/00_overview/ai_assistant_architecture.md`
 - `docs/00_overview/ai_assistant_system_design.md`

@@ -9,6 +9,14 @@ Current objective is to evolve from MVP task intake to a reliable Task Execution
 - OS: Ubuntu 24.04
 - Runtime: Docker Compose
 - Repository root: `/root/ai-assistant`
+- Current resource mode: constrained shared server until RAM/swap upgrade
+
+## Shared Server Operating Mode
+- This repository lives on a shared low-memory server that also hosts other projects.
+- Treat the server as a constrained runtime/dev host, not an unlimited multi-user workstation.
+- Only one active live operator may use server-side AI/IDE tooling at a time.
+- Default mode for all other agents is off-server work through git diffs, docs, logs, snapshots, and user-provided artifacts.
+- Avoid concurrent heavy Remote SSH sessions, multiple VS Code extension hosts, or multiple live AI coding sessions on the same host.
 
 ## Current Architecture
 Primary flow:
@@ -56,6 +64,30 @@ When making changes, OpenClaw must:
 - Propose plan and impact before large refactors.
 - Add or update tests for non-trivial backend/worker logic.
 - After changes in `backend`, queue integration, or `worker`, run smoke-check before final handoff (`make smoke`; for worker lifecycle changes also run `make smoke-worker`).
+- Default to off-server reasoning when live server access is not required.
+- Before starting live work on the server, check `ops-control/ACTIVE_OWNER.md` and respect the single live-operator rule.
+- Keep remote IDE load small: minimal extensions, minimal watchers, minimal parallel terminals.
+- Use handoff artifacts rather than second live sessions when another agent needs context.
+
+## Agent Roles
+- `Codex`
+  Primary implementation agent for this repository unless the user assigns otherwise.
+- `Claude Code`
+  May operate as primary implementer for another repository on the same server or as a collaborator for planning, refactoring strategy, and handoff review.
+- `Gemini`
+  Use as a new-project contributor, reviewer, or architecture analyst unless explicitly assigned as the primary operator for a separate project.
+- Multiple agents may work in parallel across projects, but only one may hold live server operator status at a time.
+
+## Live Access And Handoffs
+- Live access is allowed only for tasks that need direct repository edits, container/runtime inspection, or local smoke verification.
+- Off-server work is preferred for review, analysis, planning, spec drafting, diff review, and log interpretation.
+- Handoffs should include:
+  - current goal and branch/commit
+  - touched files
+  - open risks
+  - exact commands run
+  - pending validations
+- Record current live ownership and next handoff target in `ops-control/ACTIVE_OWNER.md` whenever server operator responsibility changes.
 
 ## Safety and Change Guardrails
 Strict rules:
