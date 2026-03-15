@@ -151,7 +151,16 @@ def create_deep_task(email_source: EmailSource, payload: GmailIntakeRequest, db:
         f"snippet={snippet}\n"
         f"attachments={attachment_summary or 'none'}"
     )
-    task = Task(id=str(uuid4()), input_text=task_input, status="created")
+    task = Task(
+        id=str(uuid4()),
+        input_text=task_input,
+        status="created",
+        telegram_chat_id=payload.telegram_chat_id,
+        telegram_user_id=payload.telegram_user_id,
+        telegram_message_id=payload.telegram_message_id,
+        reply_to_message_id=payload.reply_to_message_id,
+        delivery_status="pending" if payload.telegram_chat_id is not None else None,
+    )
     db.add(task)
     db.flush()
     enqueue_task(task.id)

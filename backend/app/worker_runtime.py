@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 
 from sqlalchemy.orm import Session
 
+from .approval_service import ApprovalCreateData, ApprovalService
 from .attachment_pipeline import AttachmentProcessingError
 from .agents.router import ExecutionRouter
 from .agents.registry import FileAgentRegistry
@@ -14,9 +15,10 @@ from .executors.factory import build_executor
 from .models import Task
 from .queue import dequeue_task, enqueue_task
 from .schema import ensure_task_optional_columns
-from .telegram_delivery import deliver_task_to_telegram
+from .telegram_delivery import deliver_approval_to_telegram, deliver_task_to_telegram
 
 logger = logging.getLogger("task_worker")
+approval_service = ApprovalService()
 
 
 def configure_logging() -> None:
@@ -193,8 +195,31 @@ def process_task(task_id: str, executor: TaskExecutor, router: ExecutionRouter) 
             )
         db.commit()
         db.refresh(task)
+        approval_payload = output.metadata.get("approval_create_data") if isinstance(output.metadata, dict) else None
+        if task.status == "done" and isinstance(approval_payload, dict):
+            approval_item = approval_service.create_item(
+                task,
+                ApprovalCreateData(
+                    summary=str(approval_payload.get("summary") or "Review generated approval"),
+                    proposed_action=approval_payload.get("proposed_action"),
+                    structured_result=approval_payload.get("structured_result")
+                    if isinstance(approval_payload.get("structured_result"), dict)
+                    else None,
+                    handoff=approval_payload.get("handoff"),
+                ),
+                db,
+            )
+            logger.info("event=approval_created task_id=%s approval_id=%s status=%s", task.id, approval_item.id, approval_item.status)
+            if task.telegram_chat_id is not None:
+                deliver_approval_to_telegram(task, approval_item)
+        suppress_task_delivery = bool(output.metadata.get("suppress_task_delivery")) if isinstance(output.metadata, dict) else False
         if task.status == "done":
-            _deliver_task_result(task, db)
+            if suppress_task_delivery and task.delivery_status == "pending":
+                task.delivery_status = None
+                db.commit()
+                db.refresh(task)
+            if not suppress_task_delivery:
+                _deliver_task_result(task, db)
             _log_task_final_structured(task, output.agent_id, output.team_id, None)
         else:
             _deliver_task_result(task, db)

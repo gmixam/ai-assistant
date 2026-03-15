@@ -81,7 +81,7 @@ IFS='|' read -r entrypoint document_team team_id steps <<<"$registry_check"
 [[ "$entrypoint" == "document_analysis_agent" ]] || fail "unexpected document entrypoint: $entrypoint"
 [[ "$document_team" == "document_analysis_team" ]] || fail "unexpected document team: $document_team"
 [[ "$team_id" == "email_triage_team" ]] || fail "unexpected email team: $team_id"
-[[ "$steps" == "email_intake,triage,action_extraction,optional_attachment_analysis,approval_preparation" ]] || fail "unexpected team steps: $steps"
+[[ "$steps" == "email_triage,action_extraction,optional_attachment_analysis,approval_preparation" ]] || fail "unexpected team steps: $steps"
 echo "PASS: registry resolution is correct"
 echo "PASS: email team handoff skeleton is defined"
 

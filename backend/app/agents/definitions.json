@@ -143,20 +143,12 @@
       "task_types": ["email_triage"],
       "workflow_steps": [
         {
-          "step_id": "email_intake",
-          "agent_id": "email_triage_agent",
-          "input_contract_id": "email_triage_input",
-          "output_contract_id": "email_triage_output",
-          "handoff_to": "email_triage_agent",
-          "description": "Email intake and message normalization."
-        },
-        {
-          "step_id": "triage",
+          "step_id": "email_triage",
           "agent_id": "email_triage_agent",
           "input_contract_id": "email_triage_input",
           "output_contract_id": "email_triage_output",
           "handoff_to": "action_extraction_agent",
-          "description": "First-pass triage and workflow classification."
+          "description": "Deep email triage and normalization from persisted email source context."
         },
         {
           "step_id": "action_extraction",
@@ -173,7 +165,7 @@
           "output_contract_id": "attachment_analysis_output",
           "handoff_to": "approval_prep_agent",
           "optional": true,
-          "description": "Reuse existing document-analysis capability when attachments are present."
+          "description": "Reuse the document-analysis capability for attachment-aware deep email review."
         },
         {
           "step_id": "approval_preparation",

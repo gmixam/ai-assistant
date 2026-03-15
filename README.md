@@ -33,6 +33,12 @@ The current mailbox intake foundation adds a Gmail-specific intake endpoint with
 
 Only `deep` emails create execution tasks. `ignore` and `light` emails stay persisted as `email_sources` plus `email_attachments` metadata for later review and future workflow expansion.
 
+Deep email tasks now route into `email_triage_team`:
+
+`email source -> deep task -> email_triage_agent -> action_extraction_agent -> attachment_analysis_agent (optional) -> approval_prep_agent -> approval item`
+
+If the deep email task carries Telegram metadata, approval delivery is sent to Telegram from the worker flow.
+
 Primary operational references:
 - [task_execution_step7_telegram_e2e.md](/root/ai-assistant/docs/02_execution_pipeline/task_execution_step7_telegram_e2e.md)
 - [task_execution_step8_file_reading_mvp.md](/root/ai-assistant/docs/02_execution_pipeline/task_execution_step8_file_reading_mvp.md)

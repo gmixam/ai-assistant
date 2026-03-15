@@ -14,6 +14,7 @@ logger = logging.getLogger("telegram_delivery")
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
 TELEGRAM_API_BASE_URL = os.getenv("TELEGRAM_API_BASE_URL", "https://api.telegram.org").rstrip("/")
 TELEGRAM_DELIVERY_TIMEOUT_SECONDS = int(os.getenv("TELEGRAM_DELIVERY_TIMEOUT_SECONDS", "15"))
+TELEGRAM_DELIVERY_MODE = os.getenv("TELEGRAM_DELIVERY_MODE", "live").strip().lower()
 
 
 def _build_task_message(task: Task) -> str:
@@ -68,6 +69,33 @@ class DeliveryOutcome:
 def deliver_task_to_telegram(task: Task) -> DeliveryOutcome:
     if task.telegram_chat_id is None:
         return DeliveryOutcome(success=False, error_text="telegram_chat_id is missing")
+    if TELEGRAM_DELIVERY_MODE == "mock-success":
+        logger.info(
+            "event=telegram_delivery_started task_id=%s telegram_chat_id=%s delivery_status=%s",
+            task.id,
+            task.telegram_chat_id,
+            task.delivery_status or "pending",
+        )
+        logger.info(
+            "event=telegram_delivery_completed task_id=%s telegram_chat_id=%s delivery_status=delivered",
+            task.id,
+            task.telegram_chat_id,
+        )
+        return DeliveryOutcome(success=True, error_text=None)
+    if TELEGRAM_DELIVERY_MODE == "mock-failure":
+        logger.info(
+            "event=telegram_delivery_started task_id=%s telegram_chat_id=%s delivery_status=%s",
+            task.id,
+            task.telegram_chat_id,
+            task.delivery_status or "pending",
+        )
+        logger.error(
+            "event=telegram_delivery_failed task_id=%s telegram_chat_id=%s delivery_status=failed error=%s",
+            task.id,
+            task.telegram_chat_id,
+            "mock failure",
+        )
+        return DeliveryOutcome(success=False, error_text="mock failure")
     if not TELEGRAM_BOT_TOKEN:
         return DeliveryOutcome(success=False, error_text="TELEGRAM_BOT_TOKEN is missing")
 
@@ -148,6 +176,38 @@ def deliver_task_to_telegram(task: Task) -> DeliveryOutcome:
 def deliver_approval_to_telegram(task: Task, item: ApprovalItem) -> DeliveryOutcome:
     if task.telegram_chat_id is None:
         return DeliveryOutcome(success=False, error_text="telegram_chat_id is missing")
+    if TELEGRAM_DELIVERY_MODE == "mock-success":
+        logger.info(
+            "event=approval_delivery_started task_id=%s approval_id=%s telegram_chat_id=%s status=%s",
+            task.id,
+            item.id,
+            task.telegram_chat_id,
+            item.status,
+        )
+        logger.info(
+            "event=approval_delivery_completed task_id=%s approval_id=%s telegram_chat_id=%s status=%s",
+            task.id,
+            item.id,
+            task.telegram_chat_id,
+            item.status,
+        )
+        return DeliveryOutcome(success=True, error_text=None)
+    if TELEGRAM_DELIVERY_MODE == "mock-failure":
+        logger.info(
+            "event=approval_delivery_started task_id=%s approval_id=%s telegram_chat_id=%s status=%s",
+            task.id,
+            item.id,
+            task.telegram_chat_id,
+            item.status,
+        )
+        logger.error(
+            "event=approval_delivery_failed task_id=%s approval_id=%s telegram_chat_id=%s error=%s",
+            task.id,
+            item.id,
+            task.telegram_chat_id,
+            "mock failure",
+        )
+        return DeliveryOutcome(success=False, error_text="mock failure")
     if not TELEGRAM_BOT_TOKEN:
         return DeliveryOutcome(success=False, error_text="TELEGRAM_BOT_TOKEN is missing")
 

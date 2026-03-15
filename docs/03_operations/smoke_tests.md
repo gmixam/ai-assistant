@@ -22,6 +22,14 @@
 - attachment metadata is persisted on email entities
 - duplicate email intake is persisted and linked to the original source without creating another task
 
+`make smoke-email-team` validates the deep email team flow in isolated mode:
+- deep Gmail intake creates an email-backed task
+- only the deep task enters `email_triage_team`
+- explicit team handoffs are logged across triage, action extraction, attachment analysis, and approval prep
+- attachment analysis reuses the document-analysis capability bridge
+- approval item is created automatically by worker completion
+- Telegram approval delivery is exercised through deterministic mock-success delivery
+
 ## How to run
 From repository root:
 ```bash
@@ -29,6 +37,7 @@ make up
 make smoke-normal
 make smoke
 make smoke-email-intake
+make smoke-email-team
 ```
 
 Recommended mode-specific entry points:
@@ -44,6 +53,8 @@ Recommended mode-specific entry points:
   brings backend + bot up and validates approval rendering, lifecycle transitions, idempotency, and deterministic Telegram delivery simulation
 - `make smoke-email-intake`:
   stops `ai_worker` first and runs deterministic Gmail intake smoke for ignore/light/deep/attachment/duplicate routing
+- `make smoke-email-team`:
+  stops `ai_worker` first and runs deterministic deep email team smoke through approval creation and Telegram approval delivery
 
 For final normal-operation readiness, the manual Telegram document E2E remains the decisive check because it validates:
 - real Telegram file intake
@@ -171,6 +182,18 @@ Validates:
 - only deep traffic creates queued tasks
 - attachment metadata is stored in `email_attachments`
 - duplicate email intake links back through `duplicate_of_email_id`
+
+Deep email team smoke:
+```bash
+make smoke-email-team
+```
+Validates:
+- `email_triage` routing is chosen for email-backed deep tasks
+- `email_triage_agent`, `action_extraction_agent`, `attachment_analysis_agent`, and `approval_prep_agent` all execute in order
+- `event=agent_handoff` structured logs carry explicit contract ids between agents
+- attachment analysis uses the document-analysis bridge instead of a separate attachment subsystem
+- worker creates one approval item and triggers Telegram approval delivery
+- task finishes `done` without sending a separate task-result Telegram message
 
 Manual Telegram intake scenarios:
 1. Text only:

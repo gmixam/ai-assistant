@@ -59,6 +59,10 @@ class GmailIntakeRequest(BaseModel):
     snippet: Optional[str] = None
     labels: list[str] = Field(default_factory=list)
     attachments: list[EmailAttachmentMetadata] = Field(default_factory=list)
+    telegram_chat_id: Optional[int] = None
+    telegram_user_id: Optional[int] = None
+    telegram_message_id: Optional[int] = None
+    reply_to_message_id: Optional[int] = None
     received_at: Optional[datetime] = None
 
 
