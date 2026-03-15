@@ -118,6 +118,26 @@ class EmailTriageTeamHandler:
                     step.agent_id,
                 )
                 continue
+            if step.optional and step.agent_id == "attachment_analysis_agent":
+                try:
+                    applied_policy = json.loads(email_source.applied_policy_json or "{}")
+                except (TypeError, ValueError):
+                    applied_policy = {}
+                attachment_policy = (
+                    applied_policy.get("attachment_policy")
+                    if isinstance(applied_policy.get("attachment_policy"), dict)
+                    else {}
+                )
+                allowed = set(attachment_policy.get("download_for") or ["deep"])
+                if "deep" not in allowed:
+                    logger.info(
+                        "event=team_step_skipped task_id=%s team_id=%s step_id=%s agent_id=%s reason=attachment_policy_disabled",
+                        task.id,
+                        team.team_id,
+                        step.step_id,
+                        step.agent_id,
+                    )
+                    continue
 
             logger.info(
                 "event=team_step_started task_id=%s team_id=%s step_id=%s agent_id=%s input_contract=%s output_contract=%s",

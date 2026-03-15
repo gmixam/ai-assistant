@@ -8,6 +8,8 @@ from sqlalchemy.orm import Session
 from .approval_service import ApprovalCreateData, ApprovalService
 from .database import Base, SessionLocal, engine
 from .email_intake import persist_gmail_intake
+from .mail_models import NormalizedMailAttachment, NormalizedMailMessage
+from .mail_policy import apply_manual_override, maybe_create_override_task, serialize_mailbox_policy, upsert_mailbox_policy
 from .mail_sync import MailSyncService
 from .models import ApprovalItem, EmailAttachment, EmailSource, MailboxSyncState, Task, TaskAttachment
 from .queue import enqueue_task
@@ -18,9 +20,12 @@ from .tasks import (
     ApprovalDecisionRequest,
     EmailSourceResponse,
     GmailIntakeRequest,
+    MailboxPolicyRequest,
+    MailboxPolicyResponse,
     MailboxSyncRequest,
     MailboxSyncResponse,
     MailboxSyncStateResponse,
+    MailOverrideRequest,
     TaskCreateRequest,
     TaskCreateResponse,
     TaskResponse,
@@ -97,6 +102,11 @@ def _serialize_email(email: EmailSource, db: Session) -> dict:
         "triage_score": email.triage_score,
         "routing_decision": email.routing_decision,
         "reason_codes": json.loads(email.reason_codes_json or "[]"),
+        "applied_policy": json.loads(email.applied_policy_json or "{}"),
+        "rule_hits": json.loads(email.rule_hits_json or "[]"),
+        "decision_source": email.decision_source,
+        "uncertain_reason": email.uncertain_reason,
+        "rollout_mode": email.rollout_mode,
         "duplicate_of_email_id": email.duplicate_of_email_id,
         "task_id": email.task_id,
         "received_at": email.received_at,
@@ -167,9 +177,66 @@ def get_email_source(email_source_id: int, db: Session = Depends(get_db)):
     return _serialize_email(email, db)
 
 
+@app.post("/email-sources/{email_source_id}/override", response_model=EmailSourceResponse)
+def override_email_source(email_source_id: int, payload: MailOverrideRequest, db: Session = Depends(get_db)):
+    email = db.get(EmailSource, email_source_id)
+    if email is None:
+        raise HTTPException(status_code=404, detail="Email source not found")
+    if payload.routing_decision not in {"ignore", "light", "deep"}:
+        raise HTTPException(status_code=400, detail="Unsupported routing_decision override")
+    apply_manual_override(email, payload.routing_decision, db, decided_by=payload.decided_by, comment=payload.comment)
+    try:
+        source_payload = json.loads(email.source_payload or "{}")
+    except (TypeError, ValueError):
+        source_payload = {}
+    attachments = [
+        NormalizedMailAttachment(
+            attachment_id=str(item.get("attachment_id") or item.get("provider_attachment_id") or ""),
+            filename=item.get("filename"),
+            mime_type=item.get("mime_type"),
+            file_size=item.get("file_size"),
+            is_inline=bool(item.get("is_inline", False)),
+            provider_payload=item.get("provider_payload") or {},
+        )
+        for item in source_payload.get("attachments") or []
+    ]
+    message = NormalizedMailMessage(
+        provider=email.provider,
+        mailbox=email.mailbox,
+        provider_message_id=email.provider_message_id,
+        thread_id=email.thread_id,
+        internet_message_id=email.internet_message_id,
+        from_address=email.from_address,
+        from_name=email.from_name,
+        subject=email.subject,
+        snippet=email.snippet,
+        labels=json.loads(email.labels_json or "[]"),
+        attachments=attachments,
+        telegram_chat_id=source_payload.get("telegram_chat_id"),
+        telegram_user_id=source_payload.get("telegram_user_id"),
+        telegram_message_id=source_payload.get("telegram_message_id"),
+        reply_to_message_id=source_payload.get("reply_to_message_id"),
+        provider_payload=source_payload.get("provider_payload") or {},
+    )
+    maybe_create_override_task(email, message, db)
+    return _serialize_email(email, db)
+
+
 @app.get("/mail-providers")
 def list_mail_providers():
     return {"providers": mail_sync_service.adapter_registry().list_providers()}
+
+
+@app.get("/mailboxes/{provider}/{mailbox}/policy", response_model=MailboxPolicyResponse)
+def get_mailbox_policy(provider: str, mailbox: str, db: Session = Depends(get_db)):
+    return serialize_mailbox_policy(provider, mailbox, db)
+
+
+@app.put("/mailboxes/{provider}/{mailbox}/policy", response_model=MailboxPolicyResponse)
+def put_mailbox_policy(provider: str, mailbox: str, payload: MailboxPolicyRequest, db: Session = Depends(get_db)):
+    data = payload.model_dump() if hasattr(payload, "model_dump") else payload.dict()
+    upsert_mailbox_policy(provider, mailbox, data, db)
+    return serialize_mailbox_policy(provider, mailbox, db)
 
 
 @app.post("/mailboxes/sync", response_model=MailboxSyncResponse)

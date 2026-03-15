@@ -1,4 +1,5 @@
 import json
+import logging
 from dataclasses import dataclass
 from hashlib import sha256
 from uuid import uuid4
@@ -6,6 +7,7 @@ from uuid import uuid4
 from sqlalchemy.orm import Session
 
 from .mail_models import NormalizedMailAttachment, NormalizedMailMessage, attachment_to_json, message_to_json
+from .mail_policy import apply_policy, load_mailbox_policy
 from .models import EmailAttachment, EmailSource, Task
 from .queue import enqueue_task
 from .tasks import GmailIntakeRequest
@@ -42,6 +44,7 @@ MARKETING_TERMS = (
 )
 IGNORED_LABELS = {"spam", "trash"}
 LOW_SIGNAL_LABELS = {"promotions", "social", "forums", "updates"}
+logger = logging.getLogger("email_intake")
 
 
 @dataclass
@@ -214,7 +217,16 @@ def persist_normalized_mail_message(message: NormalizedMailMessage, db: Session)
     )
 
     labels = [label.strip() for label in message.labels if label.strip()]
-    decision = evaluate_intake(message)
+    base_decision = evaluate_intake(message)
+    policy = load_mailbox_policy(message.provider, message.mailbox, db)
+    decision = apply_policy(
+        message,
+        base_decision.prefilter_status,
+        base_decision.triage_score,
+        base_decision.routing_decision,
+        base_decision.reason_codes,
+        policy,
+    )
     email_source = EmailSource(
         provider=message.provider,
         mailbox=message.mailbox,
@@ -230,10 +242,15 @@ def persist_normalized_mail_message(message: NormalizedMailMessage, db: Session)
         source_payload=message_to_json(message),
         dedupe_key=dedupe_key,
         duplicate_of_email_id=existing.id if existing is not None else None,
-        prefilter_status="duplicate" if existing is not None else decision.prefilter_status,
+        prefilter_status="duplicate" if existing is not None else base_decision.prefilter_status,
         triage_score=0 if existing is not None else decision.triage_score,
         routing_decision="ignore" if existing is not None else decision.routing_decision,
         reason_codes_json=json.dumps(["dedupe_duplicate_message"] if existing is not None else decision.reason_codes),
+        applied_policy_json=json.dumps({} if existing is not None else decision.applied_policy),
+        rule_hits_json=json.dumps(["dedupe_duplicate_message"] if existing is not None else decision.rule_hits),
+        decision_source="dedupe" if existing is not None else decision.decision_source,
+        uncertain_reason=None if existing is not None else decision.uncertain_reason,
+        rollout_mode=None if existing is not None else decision.rollout_mode,
         received_at=message.received_at,
     )
     db.add(email_source)
@@ -249,15 +266,26 @@ def persist_normalized_mail_message(message: NormalizedMailMessage, db: Session)
                 file_size=attachment.file_size,
                 is_inline=attachment.is_inline,
                 provider_payload=attachment_to_json(attachment),
-                download_status="pending" if existing is None and decision.routing_decision == "deep" else None,
+                download_status="pending"
+                if existing is None and decision.routing_decision == "deep" and decision.attachment_download_allowed
+                else None,
             )
         )
 
-    if existing is None and decision.routing_decision == "deep":
+    if existing is None and decision.create_deep_task:
         create_deep_task(email_source, message, db)
 
     db.commit()
     db.refresh(email_source)
+    logger.info(
+        "event=mail_routing_finalized provider=%s mailbox=%s provider_message_id=%s routing_decision=%s decision_source=%s rollout_mode=%s",
+        message.provider,
+        message.mailbox,
+        message.provider_message_id,
+        email_source.routing_decision,
+        email_source.decision_source or "unknown",
+        email_source.rollout_mode or "none",
+    )
     return email_source
 
 

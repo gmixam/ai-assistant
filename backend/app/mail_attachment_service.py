@@ -64,6 +64,10 @@ def _download_attachment(
     registry: MailProviderRegistry,
     db: Session,
 ) -> DownloadedMailAttachment:
+    applied_policy = _load_applied_policy(email_source)
+    attachment_policy = applied_policy.get("attachment_policy") if isinstance(applied_policy.get("attachment_policy"), dict) else {}
+    if "deep" not in set(attachment_policy.get("download_for") or ["deep"]):
+        raise RuntimeError("attachment download is disabled by mailbox policy")
     attachment.download_status = "downloading"
     attachment.download_error = None
     db.commit()
@@ -140,6 +144,14 @@ def _provider_options(email_source: EmailSource) -> dict | None:
         return None
     provider_payload = source_payload.get("provider_payload")
     return provider_payload if isinstance(provider_payload, dict) else None
+
+
+def _load_applied_policy(email_source: EmailSource) -> dict:
+    try:
+        payload = json.loads(email_source.applied_policy_json or "{}")
+    except (TypeError, ValueError):
+        return {}
+    return payload if isinstance(payload, dict) else {}
 
 
 def _store_payload(email_source_id: int, attachment_id: int, filename: str, payload: bytes) -> str:

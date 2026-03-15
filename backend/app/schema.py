@@ -122,6 +122,46 @@ def ensure_task_optional_columns(engine: Engine) -> None:
                 """
             )
         )
+        connection.execute(
+            text(
+                """
+                CREATE TABLE IF NOT EXISTS mailbox_policies (
+                    id SERIAL PRIMARY KEY,
+                    provider VARCHAR(32) NOT NULL,
+                    mailbox VARCHAR(255) NOT NULL,
+                    scope_mode VARCHAR(32) NOT NULL DEFAULT 'all',
+                    scope_values_json TEXT NOT NULL DEFAULT '[]',
+                    trusted_senders_json TEXT NOT NULL DEFAULT '[]',
+                    trusted_domains_json TEXT NOT NULL DEFAULT '[]',
+                    blocked_senders_json TEXT NOT NULL DEFAULT '[]',
+                    blocked_domains_json TEXT NOT NULL DEFAULT '[]',
+                    watch_senders_json TEXT NOT NULL DEFAULT '[]',
+                    watch_domains_json TEXT NOT NULL DEFAULT '[]',
+                    priority_rules_json TEXT NOT NULL DEFAULT '[]',
+                    triage_thresholds_json TEXT NOT NULL DEFAULT '{}',
+                    attachment_policy_json TEXT NOT NULL DEFAULT '{}',
+                    rollout_mode VARCHAR(32) NOT NULL DEFAULT 'approval_only_for_deep',
+                    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                )
+                """
+            )
+        )
+        connection.execute(
+            text(
+                """
+                CREATE TABLE IF NOT EXISTS mail_routing_overrides (
+                    id SERIAL PRIMARY KEY,
+                    email_source_id INTEGER NOT NULL REFERENCES email_sources(id),
+                    from_decision VARCHAR(32) NOT NULL,
+                    to_decision VARCHAR(32) NOT NULL,
+                    decided_by VARCHAR(255),
+                    comment TEXT,
+                    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                )
+                """
+            )
+        )
         connection.execute(text("CREATE INDEX IF NOT EXISTS ix_email_sources_provider ON email_sources(provider)"))
         connection.execute(text("CREATE INDEX IF NOT EXISTS ix_email_sources_mailbox ON email_sources(mailbox)"))
         connection.execute(
@@ -137,6 +177,16 @@ def ensure_task_optional_columns(engine: Engine) -> None:
         )
         connection.execute(text("CREATE INDEX IF NOT EXISTS ix_mailbox_sync_states_provider ON mailbox_sync_states(provider)"))
         connection.execute(text("CREATE INDEX IF NOT EXISTS ix_mailbox_sync_states_mailbox ON mailbox_sync_states(mailbox)"))
+        connection.execute(text("CREATE INDEX IF NOT EXISTS ix_mailbox_policies_provider ON mailbox_policies(provider)"))
+        connection.execute(text("CREATE INDEX IF NOT EXISTS ix_mailbox_policies_mailbox ON mailbox_policies(mailbox)"))
+        connection.execute(
+            text("CREATE INDEX IF NOT EXISTS ix_mail_routing_overrides_email_source_id ON mail_routing_overrides(email_source_id)")
+        )
+        connection.execute(text("ALTER TABLE email_sources ADD COLUMN IF NOT EXISTS applied_policy_json TEXT"))
+        connection.execute(text("ALTER TABLE email_sources ADD COLUMN IF NOT EXISTS rule_hits_json TEXT"))
+        connection.execute(text("ALTER TABLE email_sources ADD COLUMN IF NOT EXISTS decision_source VARCHAR(64)"))
+        connection.execute(text("ALTER TABLE email_sources ADD COLUMN IF NOT EXISTS uncertain_reason TEXT"))
+        connection.execute(text("ALTER TABLE email_sources ADD COLUMN IF NOT EXISTS rollout_mode VARCHAR(32)"))
         connection.execute(text("ALTER TABLE email_attachments ADD COLUMN IF NOT EXISTS provider_payload TEXT"))
         connection.execute(text("ALTER TABLE email_attachments ADD COLUMN IF NOT EXISTS local_path TEXT"))
         connection.execute(text("ALTER TABLE email_attachments ADD COLUMN IF NOT EXISTS download_status VARCHAR(32)"))
@@ -150,3 +200,20 @@ def ensure_task_optional_columns(engine: Engine) -> None:
         connection.execute(text("ALTER TABLE mailbox_sync_states ADD COLUMN IF NOT EXISTS last_synced_at TIMESTAMPTZ"))
         connection.execute(text("ALTER TABLE mailbox_sync_states ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ"))
         connection.execute(text("ALTER TABLE mailbox_sync_states ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ"))
+        connection.execute(text("ALTER TABLE mailbox_policies ADD COLUMN IF NOT EXISTS scope_mode VARCHAR(32)"))
+        connection.execute(text("ALTER TABLE mailbox_policies ADD COLUMN IF NOT EXISTS scope_values_json TEXT"))
+        connection.execute(text("ALTER TABLE mailbox_policies ADD COLUMN IF NOT EXISTS trusted_senders_json TEXT"))
+        connection.execute(text("ALTER TABLE mailbox_policies ADD COLUMN IF NOT EXISTS trusted_domains_json TEXT"))
+        connection.execute(text("ALTER TABLE mailbox_policies ADD COLUMN IF NOT EXISTS blocked_senders_json TEXT"))
+        connection.execute(text("ALTER TABLE mailbox_policies ADD COLUMN IF NOT EXISTS blocked_domains_json TEXT"))
+        connection.execute(text("ALTER TABLE mailbox_policies ADD COLUMN IF NOT EXISTS watch_senders_json TEXT"))
+        connection.execute(text("ALTER TABLE mailbox_policies ADD COLUMN IF NOT EXISTS watch_domains_json TEXT"))
+        connection.execute(text("ALTER TABLE mailbox_policies ADD COLUMN IF NOT EXISTS priority_rules_json TEXT"))
+        connection.execute(text("ALTER TABLE mailbox_policies ADD COLUMN IF NOT EXISTS triage_thresholds_json TEXT"))
+        connection.execute(text("ALTER TABLE mailbox_policies ADD COLUMN IF NOT EXISTS attachment_policy_json TEXT"))
+        connection.execute(text("ALTER TABLE mailbox_policies ADD COLUMN IF NOT EXISTS rollout_mode VARCHAR(32)"))
+        connection.execute(text("ALTER TABLE mailbox_policies ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ"))
+        connection.execute(text("ALTER TABLE mailbox_policies ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ"))
+        connection.execute(text("ALTER TABLE mail_routing_overrides ADD COLUMN IF NOT EXISTS decided_by VARCHAR(255)"))
+        connection.execute(text("ALTER TABLE mail_routing_overrides ADD COLUMN IF NOT EXISTS comment TEXT"))
+        connection.execute(text("ALTER TABLE mail_routing_overrides ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ"))

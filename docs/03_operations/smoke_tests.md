@@ -38,6 +38,14 @@
 - provider-agnostic attachment download contract is exercised
 - checkpoint state is persisted
 
+`make smoke-mail-policy` validates mailbox-level mail processing policy behavior:
+- mailbox policy settings are persisted and read through API
+- trusted/blocked/watch sender/domain rules affect routing
+- rollout modes gate task creation safely
+- uncertain review path is persisted separately from ignore/light/deep
+- manual overrides can escalate or downgrade routing decisions
+- policy audit fields and override logs are present
+
 ## How to run
 From repository root:
 ```bash
@@ -47,6 +55,7 @@ make smoke
 make smoke-email-intake
 make smoke-email-team
 make smoke-mail-provider
+make smoke-mail-policy
 ```
 
 Recommended mode-specific entry points:
@@ -66,6 +75,8 @@ Recommended mode-specific entry points:
   stops `ai_worker` first and runs deterministic deep email team smoke through approval creation and Telegram approval delivery
 - `make smoke-mail-provider`:
   stops `ai_worker` first and runs deterministic provider sync smoke over the common mailbox abstraction layer
+- `make smoke-mail-policy`:
+  stops `ai_worker` first and runs deterministic mailbox-policy smoke over policy, rollout, uncertain, and override behavior
 
 For final normal-operation readiness, the manual Telegram document E2E remains the decisive check because it validates:
 - real Telegram file intake
@@ -216,6 +227,18 @@ Validates:
 - checkpoint state is readable via `/mailboxes/{provider}/{mailbox}/checkpoint`
 - deep attachment path downloads content only when the deep task is processed
 - fake provider gives deterministic coverage without needing live Mail.ru credentials
+
+Mail policy layer smoke:
+```bash
+make smoke-mail-policy
+```
+Validates:
+- `/mailboxes/{provider}/{mailbox}/policy` stores mailbox-level settings
+- blocked sender rules force ignore
+- watch domain rules force uncertain review
+- `observe_only` prevents task creation even for deep decisions
+- manual override supports `ignore -> light`, `light -> deep`, and `deep -> light`
+- policy audit fields persist on `email_sources`
 
 Manual Telegram intake scenarios:
 1. Text only:

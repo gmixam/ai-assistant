@@ -96,6 +96,11 @@ echo "PASS: adapter resolution registry is exposed"
 
 run_id="$(date -u +%Y%m%dT%H%M%SZ)"
 mailbox="ops-provider-$run_id@example.com"
+curl -fsS \
+  -X PUT "$API_BASE_URL/mailboxes/fake/$mailbox/policy" \
+  -H "Content-Type: application/json" \
+  -d '{"scope_mode":"all","triage_thresholds":{"light_min":25,"deep_min":60,"deep_with_attachment_min":40,"uncertain_band":0},"attachment_policy":{"download_for":["deep"],"max_attachments":5},"rollout_mode":"approval_only_for_deep"}' >/dev/null \
+  || fail "failed to set deterministic provider smoke policy"
 attachment_b64="$(printf 'Attachment body for provider smoke contract.' | base64 -w0)"
 sync_response="$(
   curl -fsS \
@@ -105,9 +110,9 @@ sync_response="$(
 )" || fail "POST /mailboxes/sync failed"
 
 counts="$(
-  printf '%s' "$sync_response" | python3 -c 'import json,sys; d=json.load(sys.stdin); print("|".join(str(d.get(k)) for k in ("fetched_count","normalized_count","ignore_count","light_count","deep_count","duplicate_count","task_count")))'
+  printf '%s' "$sync_response" | python3 -c 'import json,sys; d=json.load(sys.stdin); print("|".join(str(d.get(k)) for k in ("fetched_count","normalized_count","ignore_count","light_count","deep_count","uncertain_count","duplicate_count","task_count")))'
 )"
-[[ "$counts" == "5|5|1|1|2|1|2" ]] || fail "unexpected sync counts: $counts"
+[[ "$counts" == "5|5|1|1|2|0|1|2" ]] || fail "unexpected sync counts: $counts"
 echo "PASS: fetch -> normalize -> intake reuse produced expected ignore/light/deep/dedupe counts"
 
 backend_logs="$(docker compose -f "$COMPOSE_FILE" logs --tail=400 backend)"

@@ -102,6 +102,11 @@ class EmailSourceResponse(BaseModel):
     triage_score: int
     routing_decision: str
     reason_codes: list[str] = Field(default_factory=list)
+    applied_policy: dict = Field(default_factory=dict)
+    rule_hits: list[str] = Field(default_factory=list)
+    decision_source: Optional[str] = None
+    uncertain_reason: Optional[str] = None
+    rollout_mode: Optional[str] = None
     duplicate_of_email_id: Optional[int] = None
     task_id: Optional[str] = None
     received_at: Optional[datetime] = None
@@ -136,9 +141,48 @@ class MailboxSyncResponse(BaseModel):
     ignore_count: int
     light_count: int
     deep_count: int
+    uncertain_count: int = 0
     duplicate_count: int
     task_count: int
     checkpoint: dict = Field(default_factory=dict)
+
+
+class MailboxPolicyRequest(BaseModel):
+    scope_mode: str = "all"
+    scope_values: list[str] = Field(default_factory=list)
+    trusted_senders: list[str] = Field(default_factory=list)
+    trusted_domains: list[str] = Field(default_factory=list)
+    blocked_senders: list[str] = Field(default_factory=list)
+    blocked_domains: list[str] = Field(default_factory=list)
+    watch_senders: list[str] = Field(default_factory=list)
+    watch_domains: list[str] = Field(default_factory=list)
+    priority_rules: list[dict] = Field(default_factory=list)
+    triage_thresholds: dict = Field(default_factory=dict)
+    attachment_policy: dict = Field(default_factory=dict)
+    rollout_mode: str = "approval_only_for_deep"
+
+
+class MailboxPolicyResponse(BaseModel):
+    provider: str
+    mailbox: str
+    scope_mode: str
+    scope_values: list[str] = Field(default_factory=list)
+    trusted_senders: list[str] = Field(default_factory=list)
+    trusted_domains: list[str] = Field(default_factory=list)
+    blocked_senders: list[str] = Field(default_factory=list)
+    blocked_domains: list[str] = Field(default_factory=list)
+    watch_senders: list[str] = Field(default_factory=list)
+    watch_domains: list[str] = Field(default_factory=list)
+    priority_rules: list[dict] = Field(default_factory=list)
+    triage_thresholds: dict = Field(default_factory=dict)
+    attachment_policy: dict = Field(default_factory=dict)
+    rollout_mode: str
+
+
+class MailOverrideRequest(BaseModel):
+    routing_decision: str
+    decided_by: Optional[str] = None
+    comment: Optional[str] = None
 
 
 class ApprovalCreateRequest(BaseModel):

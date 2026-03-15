@@ -44,6 +44,14 @@ Current first live provider path:
 - `mailru_imap` for Mail.ru / VK-hosted corporate mailbox access
 - `fake` for deterministic provider smoke
 
+Mail processing is now gated by a separate policy layer:
+- mailbox-level scope and sender/domain rules
+- trusted / blocked / watch rules
+- rollout modes: `observe_only`, `approval_only_for_deep`, `full_mode`
+- uncertain review path near thresholds or on watch rules
+- manual routing overrides per persisted email source
+- policy audit fields stored on `email_sources`
+
 Deep email tasks now route into `email_triage_team`:
 
 `email source -> deep task -> email_triage_agent -> action_extraction_agent -> attachment_analysis_agent (optional) -> approval_prep_agent -> approval item`

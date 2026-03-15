@@ -44,6 +44,7 @@ class MailSyncService:
             ignore_count = 0
             light_count = 0
             deep_count = 0
+            uncertain_count = 0
             duplicate_count = 0
             task_count = 0
 
@@ -78,6 +79,15 @@ class MailSyncService:
                     ignore_count += 1
                     logger.info(
                         "event=mail_message_skipped provider=%s mailbox=%s provider_message_id=%s reason=ignore",
+                        provider,
+                        mailbox,
+                        normalized.provider_message_id,
+                    )
+                    continue
+                if email_source.routing_decision == "uncertain":
+                    uncertain_count += 1
+                    logger.info(
+                        "event=mail_message_skipped provider=%s mailbox=%s provider_message_id=%s reason=uncertain",
                         provider,
                         mailbox,
                         normalized.provider_message_id,
@@ -124,6 +134,7 @@ class MailSyncService:
                 "ignore_count": ignore_count,
                 "light_count": light_count,
                 "deep_count": deep_count,
+                "uncertain_count": uncertain_count,
                 "duplicate_count": duplicate_count,
                 "task_count": task_count,
                 "checkpoint": batch.next_checkpoint or {},
